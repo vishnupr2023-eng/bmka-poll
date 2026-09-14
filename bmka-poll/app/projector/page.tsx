@@ -22,7 +22,6 @@ function ProjectorContent() {
   const [totalVotes, setTotalVotes] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<string>('');
 
-  // Secret passcode required in URL query (?key=bmka2026screen)
   const isAuthorized = secretKey === 'bmka2026screen';
 
   const fetchScores = async () => {
@@ -73,14 +72,13 @@ function ProjectorContent() {
         setLastUpdated(new Date().toLocaleTimeString());
       }
     } catch (err) {
-      console.error('Error fetching live scores:', err);
+      console.error('Error fetching scores:', err);
     }
   };
 
   useEffect(() => {
     if (!isAuthorized) return;
     fetchScores();
-    // Auto-refresh scores every 3 seconds for live big-screen animation
     const interval = setInterval(fetchScores, 3000);
     return () => clearInterval(interval);
   }, [isAuthorized]);
@@ -94,106 +92,116 @@ function ProjectorContent() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white p-8 lg:p-12 flex flex-col justify-between overflow-x-hidden">
-      
-      {/* Header Banner */}
-      <div className="text-center space-y-2 border-b border-slate-800/80 pb-6">
-        <div className="flex justify-between items-center px-4 text-sm font-semibold tracking-widest uppercase text-amber-500">
+    <main className="min-h-screen bg-[#070b14] text-white p-6 lg:p-10 flex flex-col justify-between select-none">
+      {/* Top Event Banner */}
+      <header className="border-b border-slate-800 pb-4">
+        <div className="flex justify-between items-center text-xs font-semibold tracking-widest uppercase text-amber-500 mb-2">
           <span className="flex items-center gap-2">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
             </span>
-            Live Audience Voting
+            Audience Live Poll
           </span>
-          <span className="text-slate-400 font-mono">Total Votes: <strong className="text-white text-base">{totalVotes}</strong></span>
-          <span className="text-slate-400 font-mono">Updated: {lastUpdated || 'Loading...'}</span>
+          <span className="font-mono text-slate-400">Total Submissions: <strong className="text-white text-sm">{totalVotes}</strong></span>
+          <span className="font-mono text-slate-400">Live Sync: {lastUpdated || 'Connecting...'}</span>
         </div>
 
-        <h1 className="text-4xl lg:text-5xl font-black bg-gradient-to-r from-amber-400 via-orange-500 to-amber-200 bg-clip-text text-transparent">
-          കേരള തനിമ താരദമ്പതികൾ 2026
-        </h1>
-        <p className="text-base text-slate-300 font-light">
-          BMKA Ponnonam Celebrations • Official Audience Scoreboard
-        </p>
-      </div>
+        <div className="text-center">
+          <h1 className="text-3xl lg:text-5xl font-black bg-gradient-to-r from-amber-300 via-orange-400 to-amber-100 bg-clip-text text-transparent">
+            കേരള തനിമ താരദമ്പതികൾ 2026
+          </h1>
+          <p className="text-sm text-slate-400 font-light mt-1">
+            BMKA Ponnonam Celebrations • Official Live Scoreboard
+          </p>
+        </div>
+      </header>
 
-      {/* Leaderboard Cards */}
-      <div className="max-w-6xl w-full mx-auto my-8 space-y-5">
-        {stats.map((c, index) => (
-          <div 
-            key={c.id} 
-            className={`p-5 rounded-2xl border transition-all duration-700 ${
-              index === 0 
-                ? 'bg-gradient-to-r from-amber-950/40 via-slate-900/90 to-slate-900 border-amber-500/70 shadow-2xl shadow-amber-500/10 scale-[1.01]' 
-                : index === 1 
-                ? 'bg-slate-900/90 border-slate-700' 
-                : 'bg-slate-900/60 border-slate-800'
-            }`}
-          >
-            <div className="flex justify-between items-center mb-3">
-              <div className="flex items-center gap-4">
-                <span className={`w-10 h-10 flex items-center justify-center rounded-xl font-black text-lg ${
-                  index === 0 ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/40' :
-                  index === 1 ? 'bg-slate-300 text-slate-950' :
-                  index === 2 ? 'bg-amber-800 text-white' :
-                  'bg-slate-800 text-slate-400'
-                }`}>
-                  #{index + 1}
-                </span>
-                <div>
-                  <h2 className="text-2xl font-black tracking-wide text-white flex items-center gap-3">
-                    {c.name}
-                    {index === 0 && <span className="text-sm px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 font-medium">Leader</span>}
-                  </h2>
-                  <p className="text-xs text-slate-400 font-mono">{c.count} audience submissions</p>
-                </div>
-              </div>
-              
-              <div className="text-right">
-                <div className="text-3xl font-black text-amber-400 tracking-tight font-mono">
-                  {c.avgTotal} <span className="text-sm font-normal text-slate-400">/ 100</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Visual Animated Score Bar */}
-            <div className="w-full bg-slate-800/90 h-6 rounded-full overflow-hidden p-0.5 border border-slate-700/50">
-              <div 
-                className={`h-full rounded-full transition-all duration-1000 ${
-                  index === 0 
-                    ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-300' 
-                    : 'bg-gradient-to-r from-orange-600 to-amber-500'
-                }`}
-                style={{ width: `${Math.min(c.avgTotal, 100)}%` }}
-              />
-            </div>
-
-            {/* Breakdown Indicators */}
-            <div className="grid grid-cols-5 gap-2 mt-3 text-center text-xs font-medium text-slate-400">
-              <div className="bg-slate-800/40 py-1.5 px-2 rounded-lg border border-slate-800">
-                Outfit: <span className="text-slate-200 font-bold">{c.avgOutfit}/25</span>
-              </div>
-              <div className="bg-slate-800/40 py-1.5 px-2 rounded-lg border border-slate-800">
-                Essence: <span className="text-slate-200 font-bold">{c.avgEssence}/20</span>
-              </div>
-              <div className="bg-slate-800/40 py-1.5 px-2 rounded-lg border border-slate-800">
-                Walk: <span className="text-slate-200 font-bold">{c.avgWalk}/20</span>
-              </div>
-              <div className="bg-slate-800/40 py-1.5 px-2 rounded-lg border border-slate-800">
-                Chemistry: <span className="text-slate-200 font-bold">{c.avgChemistry}/20</span>
-              </div>
-              <div className="bg-slate-800/40 py-1.5 px-2 rounded-lg border border-slate-800">
-                Impact: <span className="text-slate-200 font-bold">{c.avgConfidence}/15</span>
-              </div>
-            </div>
+      {/* Vertical Bar Chart Stage */}
+      <section className="flex-1 my-6 flex flex-col justify-end">
+        <div className="relative w-full max-w-7xl mx-auto h-[480px] bg-slate-900/40 rounded-3xl border border-slate-800/80 p-6 flex flex-col justify-end">
+          
+          {/* Background Grid Lines */}
+          <div className="absolute inset-0 px-6 py-8 flex flex-col justify-between pointer-events-none opacity-20">
+            <div className="border-b border-dashed border-slate-500 w-full flex justify-end text-[10px] text-slate-400">100 pts</div>
+            <div className="border-b border-dashed border-slate-500 w-full flex justify-end text-[10px] text-slate-400">75 pts</div>
+            <div className="border-b border-dashed border-slate-500 w-full flex justify-end text-[10px] text-slate-400">50 pts</div>
+            <div className="border-b border-dashed border-slate-500 w-full flex justify-end text-[10px] text-slate-400">25 pts</div>
+            <div className="border-b border-slate-500 w-full"></div>
           </div>
-        ))}
-      </div>
 
-      {/* Footer Branding */}
-      <footer className="text-center text-xs text-slate-500 border-t border-slate-800/60 pt-4 font-mono">
-        Bedford Marston Kerala Association • Live Results Console
+          {/* Bar Chart Columns */}
+          <div className="relative z-10 grid grid-flow-col auto-cols-fr gap-4 sm:gap-6 items-end h-full pt-10">
+            {stats.map((c, index) => {
+              const heightPercent = Math.max(c.avgTotal, 4);
+
+              return (
+                <div key={c.id} className="flex flex-col items-center h-full justify-end group">
+                  {/* Floating Rank & Score Tag */}
+                  <div className="mb-2 text-center transition-transform duration-500 group-hover:-translate-y-1">
+                    {index === 0 && (
+                      <span className="text-xl inline-block animate-bounce mb-1">👑</span>
+                    )}
+                    <div className="text-xl sm:text-2xl font-black text-amber-400 font-mono tracking-tight">
+                      {c.avgTotal}
+                    </div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400">
+                      #{index + 1}
+                    </span>
+                  </div>
+
+                  {/* Vertical Rising Bar */}
+                  <div className="w-full max-w-[80px] bg-slate-800/60 rounded-2xl p-1 flex flex-col justify-end h-full">
+                    <div
+                      className={`w-full rounded-xl transition-all duration-1000 shadow-xl ${
+                        index === 0
+                          ? 'bg-gradient-to-t from-amber-600 via-orange-500 to-amber-300 shadow-orange-500/30'
+                          : index === 1
+                          ? 'bg-gradient-to-t from-slate-600 via-slate-400 to-slate-200 shadow-slate-400/20'
+                          : index === 2
+                          ? 'bg-gradient-to-t from-amber-900 via-amber-700 to-orange-400 shadow-amber-700/20'
+                          : 'bg-gradient-to-t from-slate-700 to-slate-500'
+                      }`}
+                      style={{ height: `${heightPercent}%` }}
+                    />
+                  </div>
+
+                  {/* Contestant Name Label */}
+                  <div className="mt-3 text-center w-full truncate">
+                    <p className="font-bold text-sm sm:text-base text-slate-100 truncate">
+                      {c.name}
+                    </p>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {c.count} votes
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Detailed Breakdown Panels Below Chart */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 max-w-7xl mx-auto w-full mt-4">
+          {stats.map((c, i) => (
+            <div key={c.id} className="bg-slate-900/80 border border-slate-800 rounded-xl p-2.5 text-center text-[11px]">
+              <div className="font-bold text-slate-200 truncate mb-1">
+                #{i + 1} {c.name}
+              </div>
+              <div className="grid grid-cols-2 gap-1 text-slate-400 text-[10px]">
+                <span>Outfit: <b className="text-white">{c.avgOutfit}</b></span>
+                <span>Essence: <b className="text-white">{c.avgEssence}</b></span>
+                <span>Walk: <b className="text-white">{c.avgWalk}</b></span>
+                <span>Chem: <b className="text-white">{c.avgChemistry}</b></span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="text-center text-[11px] text-slate-600 font-mono pt-2 border-t border-slate-800/40">
+        Bedford Marston Kerala Association • Press F11 for Full Screen Display
       </footer>
     </main>
   );
@@ -201,7 +209,7 @@ function ProjectorContent() {
 
 export default function ProjectorPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">Loading live projector...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-[#070b14] text-white flex items-center justify-center font-mono text-sm">Launching Projector Arena...</div>}>
       <ProjectorContent />
     </Suspense>
   );
