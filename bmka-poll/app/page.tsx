@@ -1,181 +1,280 @@
+cat << 'EOF' > app/admin/page.tsx
 'use client';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../../lib/supabase';
 
 interface Couple {
   id: string;
   name: string;
 }
 
-export default function Home() {
+interface Vote {
+  couple_id: string;
+  outfit: number;
+  essence: number;
+  walk: number;
+  chemistry: number;
+  confidence: number;
+  total: number;
+}
+
+export default function Admin() {
+  const [pin, setPin] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [couples, setCouples] = useState<Couple[]>([]);
-  const [selectedCouple, setSelectedCouple] = useState<string>('');
-  const [ratings, setRatings] = useState({
-    outfit: 0,
-    essence: 0,
-    walk: 0,
-    chemistry: 0,
-    confidence: 0
-  });
-  const [submitting, setSubmitting] = useState<boolean>(false);
-  const [submitted, setSubmitted] = useState<boolean>(false);
+  const [votes, setVotes] = useState<Vote[]>([]);
+  const [newCoupleName, setNewCoupleName] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
+  const correctPin = process.env.NEXT_PUBLIC_ADMIN_PIN || '2026';
+
+  const fetchData = async () => {
+    const { data: couplesData, error: cErr } = await supabase.from('couples').select('*').order('name');
+    const { data: votesData, error: vErr } = await supabase.from('votes').select('*');
+    
+    if (cErr) {
+      alert('Fetch Error (Couples): ' + cErr.message);
+    }
+    if (vErr) {
+      console.error('Votes fetch error:', vErr);
+    }
+    if (couplesData) setCouples(couplesData);
+    if (votesData) setVotes(votesData);
+  };
 
   useEffect(() => {
-    async function loadCouples() {
-      const { data } = await supabase.from('couples').select('id, name').order('name');
-      if (data) setCouples(data);
+    if (isAuthenticated) {
+      fetchData();
     }
-    loadCouples();
-  }, []);
+  }, [isAuthenticated]);
 
-  const handleRatingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setRatings({
-      ...ratings,
-      [e.target.name]: parseInt(e.target.value) || 0
-    });
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pin && pin === correctPin) {
+      setIsAuthenticated(true);
+      setLoginError('');
+    } else {
+      setLoginError('Invalid Passcode. Access denied.');
+      setPin('');
+    }
   };
 
-  const totalScore = ratings.outfit + ratings.essence + ratings.walk + ratings.chemistry + ratings.confidence;
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleAddCouple = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCouple) {
-      alert('Please select a couple to rate.');
+    if (!isAuthenticated) return;
+    if (!newCoupleName.trim()) {
+      alert('Please enter a name first');
       return;
     }
 
-    setSubmitting(true);
-    const { error } = await supabase.from('votes').insert([
-      {
-        couple_id: selectedCouple,
-        outfit: ratings.outfit,
-        essence: ratings.essence,
-        walk: ratings.walk,
-        chemistry: ratings.chemistry,
-        confidence: ratings.confidence,
-        total: totalScore
-      }
-    ]);
-    setSubmitting(false);
+    setAdding(true);
+    const { data, error } = await supabase
+      .from('couples')
+      .insert([{ name: newCoupleName.trim() }])
+      .select();
+
+    setAdding(false);
 
     if (error) {
-      alert('Error submitting vote: ' + error.message);
+      alert('Database Insert Error: ' + error.message);
       return;
     }
 
-    setSubmitted(true);
+    alert('Couple added successfully!');
+    setNewCoupleName('');
+    fetchData();
   };
 
-  if (submitted) {
+  const handleDeleteCouple = async (id: string) => {
+    if (!isAuthenticated) return;
+    if (!confirm('Are you sure you want to remove this contestant?')) return;
+    
+    const { error } = await supabase.from('couples').delete().eq('id', id);
+    if (error) {
+      alert('Failed to delete couple: ' + error.message);
+      return;
+    }
+    fetchData();
+  };
+
+  const handleResetVotes = async () => {
+    if (!isAuthenticated) return;
+    if (!confirm('Danger: This will permanently wipe ALL audience votes. Proceed?')) return;
+    
+    const { error } = await supabase.from('votes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (error) {
+      alert('Failed to reset votes: ' + error.message);
+      return;
+    }
+    fetchData();
+  };
+
+  const stats = couples.map((c) => {
+    const cVotes = votes.filter((v) => v.couple_id === c.id);
+    const count = cVotes.length;
+    if (count === 0) {
+      return { id: c.id, name: c.name, count: 0, avg: 0, outfit: 0, essence: 0, walk: 0, chem: 0, conf: 0 };
+    }
+    const sumTotal = cVotes.reduce((a, b) => a + b.total, 0);
+    const sumOutfit = cVotes.reduce((a, b) => a + b.outfit, 0);
+    const sumEssence = cVotes.reduce((a, b) => a + b.essence, 0);
+    const sumWalk = cVotes.reduce((a, b) => a + b.walk, 0);
+    const sumChem = cVotes.reduce((a, b) => a + b.chemistry, 0);
+    const sumConf = cVotes.reduce((a, b) => a + b.confidence, 0);
+
+    return {
+      id: c.id,
+      name: c.name,
+      count,
+      avg: parseFloat((sumTotal / count).toFixed(1)),
+      outfit: parseFloat((sumOutfit / count).toFixed(1)),
+      essence: parseFloat((sumEssence / count).toFixed(1)),
+      walk: parseFloat((sumWalk / count).toFixed(1)),
+      chem: parseFloat((sumChem / count).toFixed(1)),
+      conf: parseFloat((sumConf / count).toFixed(1))
+    };
+  }).sort((a, b) => b.avg - a.avg);
+
+  if (!isAuthenticated) {
     return (
-      <main className="min-h-screen bg-orange-50 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-xl text-center max-w-md w-full border border-orange-100">
-          <h2 className="text-2xl font-bold text-green-700 mb-2">നന്ദി! / Thank You!</h2>
-          <p className="text-gray-700">Your score for BMKA Kerala Thanima 2026 has been successfully recorded.</p>
-          <button 
-            onClick={() => {
-              setSubmitted(false);
-              setSelectedCouple('');
-              setRatings({ outfit: 0, essence: 0, walk: 0, chemistry: 0, confidence: 0 });
-            }}
-            className="mt-6 bg-orange-600 text-white px-6 py-2.5 rounded-full font-bold hover:bg-orange-700 transition shadow"
-          >
-            Vote for Another Couple
+      <main className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <form onSubmit={handleLogin} className="bg-slate-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-slate-700 text-white">
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-orange-500/20 text-orange-500 mb-3 text-xl font-bold">
+              🔒
+            </div>
+            <h2 className="text-xl font-bold">Restricted Area</h2>
+            <p className="text-xs text-slate-400 mt-1">Authorized personnel only.</p>
+          </div>
+
+          {loginError && (
+            <div className="mb-4 p-2.5 bg-red-900/40 border border-red-700 text-red-200 text-xs rounded-lg text-center font-medium">
+              {loginError}
+            </div>
+          )}
+
+          <div className="mb-4">
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={pin}
+              autoFocus
+              onChange={(e) => setPin(e.target.value)}
+              className="w-full p-3 bg-slate-700/60 border border-slate-600 rounded-xl text-white text-center text-xl tracking-widest focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+
+          <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 font-bold py-3 rounded-xl transition shadow">
+            Authenticate
           </button>
-        </div>
+          
+          <div className="text-center mt-5">
+            <Link href="/" className="text-xs text-slate-400 hover:text-white transition">
+              ← Return to Voting Page
+            </Link>
+          </div>
+        </form>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-orange-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-orange-200">
+    <main className="min-h-screen bg-slate-900 text-white p-4 sm:p-8">
+      <div className="max-w-5xl mx-auto space-y-8">
         
-        <div className="bg-gradient-to-r from-orange-600 via-amber-600 to-red-700 px-6 py-6 text-center text-white">
-          <div className="flex justify-between items-center text-xs uppercase tracking-wider mb-2 opacity-90">
-            <span>BMKA Ponnonam 2026</span>
-            <Link href="/admin" className="underline hover:text-orange-200">Admin</Link>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
+          <div>
+            <h1 className="text-2xl font-black text-amber-500">BMKA 2026 - Live Leaderboard</h1>
+            <p className="text-xs text-slate-400">Audience Poll Results & Official Management</p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold mb-1">കേരള തനിമ</h1>
-          <h2 className="text-lg font-semibold">താരദമ്പതികൾ 2026 - Audience Poll</h2>
-          <p className="text-xs opacity-90 mt-1">A Celebration of Kerala Culture, Style & Togetherness</p>
+          <div className="flex items-center gap-3">
+            <button onClick={fetchData} className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-semibold">
+              🔄 Refresh
+            </button>
+            <button onClick={handleResetVotes} className="px-3.5 py-2 bg-red-950/40 border border-red-800 text-red-300 hover:bg-red-900/60 rounded-lg text-xs font-semibold">
+              ⚠️ Reset Votes
+            </button>
+            <Link href="/" className="px-3.5 py-2 bg-orange-600 hover:bg-orange-700 rounded-lg text-xs font-semibold">
+              Poll Screen
+            </Link>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div>
-            <label className="block text-sm font-bold text-gray-800 mb-2">Select Couple / മത്സരാർത്ഥികൾ</label>
-            <select 
-              value={selectedCouple} 
-              onChange={(e) => setSelectedCouple(e.target.value)}
-              className="w-full border border-gray-300 p-3 rounded-xl focus:ring-2 focus:ring-orange-500 text-gray-900 bg-white"
-              required
-            >
-              <option value="">-- Choose Couple --</option>
+        <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700 space-y-6">
+          <h2 className="text-lg font-bold text-slate-100 flex items-center justify-between">
+            <span>📊 Live Ranking (Average Score out of 100)</span>
+            <span className="text-xs text-slate-400 font-normal">Total Votes: {votes.length}</span>
+          </h2>
+
+          <div className="space-y-5">
+            {stats.map((c, index) => (
+              <div key={c.id} className="space-y-1.5">
+                <div className="flex justify-between text-sm">
+                  <span className="font-semibold flex items-center gap-2">
+                    <span className="text-xs px-2 py-0.5 rounded bg-slate-700 text-amber-400 font-mono">#{index + 1}</span>
+                    {c.name}
+                    <span className="text-xs text-slate-400 font-normal">({c.count} votes)</span>
+                  </span>
+                  <span className="font-bold text-amber-400">{c.avg} / 100</span>
+                </div>
+                <div className="w-full bg-slate-700 h-4 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-amber-500 to-orange-500 h-full transition-all duration-500 rounded-full"
+                    style={{ width: `${Math.min(c.avg, 100)}%` }}
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+                  <span>Outfit: <b className="text-slate-200">{c.outfit}/25</b></span>
+                  <span>Essence: <b className="text-slate-200">{c.essence}/20</b></span>
+                  <span>Walk: <b className="text-slate-200">{c.walk}/20</b></span>
+                  <span>Chemistry: <b className="text-slate-200">{c.chem}/20</b></span>
+                  <span>Impact: <b className="text-slate-200">{c.conf}/15</b></span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700">
+            <h2 className="text-base font-bold mb-3">➕ Add Couple</h2>
+            <form onSubmit={handleAddCouple} className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Enter Couple Name"
+                value={newCoupleName}
+                onChange={(e) => setNewCoupleName(e.target.value)}
+                className="flex-1 p-2.5 bg-slate-700 border border-slate-600 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              <button 
+                type="submit" 
+                disabled={adding}
+                className="bg-green-700 hover:bg-green-600 px-4 py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
+              >
+                {adding ? 'Adding...' : 'Add'}
+              </button>
+            </form>
+          </div>
+
+          <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700">
+            <h2 className="text-base font-bold mb-3">👥 Manage Registered Couples ({couples.length})</h2>
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
               {couples.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <div key={c.id} className="flex justify-between items-center p-2.5 rounded-lg bg-slate-700/50 border border-slate-600 text-sm">
+                  <span>{c.name}</span>
+                  <button onClick={() => handleDeleteCouple(c.id)} className="text-red-400 hover:text-red-300 text-xs px-2.5 py-1 bg-red-950/40 rounded border border-red-800">
+                    Remove
+                  </button>
+                </div>
               ))}
-            </select>
-          </div>
-
-          <div className="space-y-5 bg-orange-50/60 p-4 rounded-xl border border-orange-100">
-            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Judgement Criteria</h3>
-            
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs font-semibold text-gray-700">
-                <span>വേഷവിധാനം (Outfit & Presentation)</span>
-                <span className="text-orange-700 font-bold">{ratings.outfit} / 25</span>
-              </div>
-              <input type="range" name="outfit" min="0" max="25" value={ratings.outfit} onChange={handleRatingChange} className="w-full accent-orange-600" />
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs font-semibold text-gray-700">
-                <span>കേരളത്തനിമ (Kerala Ethnic Essence)</span>
-                <span className="text-orange-700 font-bold">{ratings.essence} / 20</span>
-              </div>
-              <input type="range" name="essence" min="0" max="20" value={ratings.essence} onChange={handleRatingChange} className="w-full accent-orange-600" />
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs font-semibold text-gray-700">
-                <span>വേദിയിലെ നടനവും (Walk & Stage Presence)</span>
-                <span className="text-orange-700 font-bold">{ratings.walk} / 20</span>
-              </div>
-              <input type="range" name="walk" min="0" max="20" value={ratings.walk} onChange={handleRatingChange} className="w-full accent-orange-600" />
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs font-semibold text-gray-700">
-                <span>ഒരുമയും പൊരുത്തവും (Togetherness & Chemistry)</span>
-                <span className="text-orange-700 font-bold">{ratings.chemistry} / 20</span>
-              </div>
-              <input type="range" name="chemistry" min="0" max="20" value={ratings.chemistry} onChange={handleRatingChange} className="w-full accent-orange-600" />
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs font-semibold text-gray-700">
-                <span>ആത്മവിശ്വാസവും പ്രകടനവും (Confidence & Impact)</span>
-                <span className="text-orange-700 font-bold">{ratings.confidence} / 15</span>
-              </div>
-              <input type="range" name="confidence" min="0" max="15" value={ratings.confidence} onChange={handleRatingChange} className="w-full accent-orange-600" />
             </div>
           </div>
+        </div>
 
-          <div className="bg-amber-100/80 p-4 rounded-xl flex justify-between items-center text-base font-bold text-amber-950 border border-amber-200">
-            <span>Total Score / ആകെ സ്കോർ:</span>
-            <span className="text-xl text-orange-700">{totalScore} / 100</span>
-          </div>
-
-          <button 
-            type="submit" 
-            disabled={submitting}
-            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3.5 rounded-xl shadow transition duration-200 disabled:opacity-50"
-          >
-            {submitting ? 'Submitting...' : 'Submit Rating / രേഖപ്പെടുത്തുക'}
-          </button>
-        </form>
       </div>
     </main>
   );
 }
+EOF
