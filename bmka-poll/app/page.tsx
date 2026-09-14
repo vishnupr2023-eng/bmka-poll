@@ -1,8 +1,8 @@
 'use client';
-import { useState } from 'react';
+import React, { useState } from 'react';
 
 export default function Home() {
-  const [selectedCouple, setSelectedCouple] = useState('');
+  const [selectedCouple, setSelectedCouple] = useState<string>('');
     const [ratings, setRatings] = useState({
         outfit: 0,
             essence: 0,
@@ -10,16 +10,16 @@ export default function Home() {
                     chemistry: 0,
                         confidence: 0
                           });
-                            const [submitted, setSubmitted] = useState(false);
+                            const [submitted, setSubmitted] = useState<boolean>(false);
 
-                              const handleRatingChange = (e) => {
+                              const handleRatingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                                   setRatings({
                                         ...ratings,
-                                              [e.target.name]: parseInt(e.target.value)
+                                              [e.target.name]: parseInt(e.target.value) || 0
                                                   });
                                                     };
 
-                                                      const handleSubmit = (e) => {
+                                                      const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
                                                           e.preventDefault();
                                                               if (!selectedCouple) {
                                                                     alert('Please select a couple to rate.');
@@ -60,7 +60,7 @@ export default function Home() {
                                                                                                                                                                                                                                                                                                               <label className="block text-lg font-bold text-gray-800 mb-3">Select Couple</label>
                                                                                                                                                                                                                                                                                                                           <select 
                                                                                                                                                                                                                                                                                                                                         value={selectedCouple} 
-                                                                                                                                                                                                                                                                                                                                                      onChange={(e) => setSelectedCouple(e.target.value)}
+                                                                                                                                                                                                                                                                                                                                                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedCouple(e.target.value)}
                                                                                                                                                                                                                                                                                                                                                                     className="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-gray-900"
                                                                                                                                                                                                                                                                                                                                                                                 >
                                                                                                                                                                                                                                                                                                                                                                                               <option value="">-- Choose a Couple --</option>
