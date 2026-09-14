@@ -22,7 +22,6 @@ interface CriterionConfig {
   maxScore: number;
   gradient: string;
   accentColor: string;
-  glowColor: string;
   durationSeconds: number;
 }
 
@@ -34,7 +33,6 @@ const CRITERIA: CriterionConfig[] = [
     maxScore: 100,
     gradient: 'from-amber-600 via-amber-500 to-yellow-300',
     accentColor: 'text-amber-400',
-    glowColor: 'shadow-amber-500/20',
     durationSeconds: 15
   },
   {
@@ -44,7 +42,6 @@ const CRITERIA: CriterionConfig[] = [
     maxScore: 25,
     gradient: 'from-rose-600 via-pink-500 to-rose-300',
     accentColor: 'text-rose-400',
-    glowColor: 'shadow-rose-500/20',
     durationSeconds: 5
   },
   {
@@ -54,7 +51,6 @@ const CRITERIA: CriterionConfig[] = [
     maxScore: 20,
     gradient: 'from-emerald-600 via-teal-400 to-emerald-200',
     accentColor: 'text-emerald-400',
-    glowColor: 'shadow-emerald-500/20',
     durationSeconds: 5
   },
   {
@@ -64,7 +60,6 @@ const CRITERIA: CriterionConfig[] = [
     maxScore: 20,
     gradient: 'from-blue-600 via-cyan-500 to-sky-300',
     accentColor: 'text-cyan-400',
-    glowColor: 'shadow-cyan-500/20',
     durationSeconds: 5
   },
   {
@@ -74,7 +69,6 @@ const CRITERIA: CriterionConfig[] = [
     maxScore: 20,
     gradient: 'from-purple-600 via-fuchsia-500 to-pink-300',
     accentColor: 'text-fuchsia-400',
-    glowColor: 'shadow-fuchsia-500/20',
     durationSeconds: 5
   },
   {
@@ -84,7 +78,6 @@ const CRITERIA: CriterionConfig[] = [
     maxScore: 15,
     gradient: 'from-amber-500 via-yellow-400 to-lime-300',
     accentColor: 'text-yellow-400',
-    glowColor: 'shadow-yellow-500/20',
     durationSeconds: 5
   }
 ];
@@ -167,7 +160,7 @@ function ProjectorContent() {
       setCurrentSlideIndex(nextIndex);
       setSecondsRemaining(CRITERIA[nextIndex].durationSeconds);
       setIsTransitioning(false);
-    }, 350);
+    }, 300);
   };
 
   useEffect(() => {
@@ -204,21 +197,20 @@ function ProjectorContent() {
   const topFive = sortedStats.slice(0, 5);
 
   return (
-    <main className="h-screen w-screen bg-[#06080e] text-white flex flex-col justify-between overflow-hidden select-none p-4 lg:p-6 font-sans">
+    <main className="h-screen w-screen bg-[#070b14] text-white flex flex-col justify-between overflow-hidden select-none p-4 lg:p-6 font-sans">
       
-      {/* Top Header Bar */}
-      <header className="flex-none border-b border-slate-800/80 pb-3">
-        <div className="flex justify-between items-center text-[11px] font-semibold tracking-wider uppercase text-amber-500 mb-1.5">
-          <div className="flex items-center gap-2.5">
+      {/* Top Header */}
+      <header className="flex-none border-b border-slate-800/80 pb-2">
+        <div className="flex justify-between items-center text-[11px] font-semibold uppercase tracking-wider text-amber-500 mb-1">
+          <div className="flex items-center gap-2">
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
-            <span className="tracking-widest font-mono text-slate-300 font-bold">BMKA PONNONAM 2026 • LIVE ARENA</span>
+            <span className="font-mono text-slate-300 font-bold tracking-widest">BMKA PONNONAM 2026 • LIVE ARENA</span>
           </div>
 
-          {/* Slide Controller Badges */}
-          <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 px-2 py-1 rounded-xl shadow-inner">
+          <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 px-2 py-1 rounded-xl">
             {CRITERIA.map((c, i) => (
               <button
                 key={c.key}
@@ -228,7 +220,7 @@ function ProjectorContent() {
                 }}
                 className={`text-[10px] px-2.5 py-0.5 rounded-lg font-bold transition-all ${
                   i === currentSlideIndex
-                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow-md shadow-amber-500/20 scale-105'
+                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -240,7 +232,7 @@ function ProjectorContent() {
 
             <button
               onClick={() => setIsPaused(!isPaused)}
-              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-mono transition"
+              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 font-mono"
             >
               {isPaused ? '▶ Play' : '⏸ Pause'}
             </button>
@@ -252,33 +244,32 @@ function ProjectorContent() {
             )}
           </div>
 
-          <div className="flex items-center gap-4 text-slate-400 font-mono text-[11px]">
+          <div className="flex items-center gap-3 text-slate-400 font-mono text-[11px]">
             <span>Audience Votes: <strong className="text-white font-bold">{totalVotes}</strong></span>
             <span>Sync: <span className="text-slate-200">{lastUpdated || '...'}</span></span>
           </div>
         </div>
 
-        {/* Malayalam & English Category Heading */}
-        <div className={`text-center transition-all duration-300 transform ${isTransitioning ? 'opacity-0 -translate-y-2' : 'opacity-100 translate-y-0'}`}>
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black bg-gradient-to-r from-amber-200 via-amber-400 to-orange-400 bg-clip-text text-transparent tracking-wide">
+        {/* Malayalam Title */}
+        <div className={`text-center transition-all duration-300 ${isTransitioning ? 'opacity-0 -translate-y-1' : 'opacity-100 translate-y-0'}`}>
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-amber-400 tracking-wide">
             {activeCriterion.titleMl}
           </h1>
           <p className="text-xs sm:text-sm font-semibold text-slate-300 flex items-center justify-center gap-2 mt-0.5">
             <span>{activeCriterion.title}</span>
-            <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-800 text-amber-400 border border-slate-700 font-mono font-bold">
+            <span className="text-[10px] px-2 py-0.2 rounded-full bg-slate-800 text-amber-400 border border-slate-700 font-mono font-bold">
               Scale: 0 – {activeCriterion.maxScore} Pts
             </span>
           </p>
         </div>
       </header>
 
-      {/* Center Showcase: Vertical Bar Chart Arena */}
-      <section className={`flex-1 flex flex-col justify-center my-3 transition-all duration-300 ease-out transform ${
-        isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
+      {/* Main Bar Chart */}
+      <section className={`flex-1 flex flex-col justify-center my-3 transition-all duration-300 ${
+        isTransitioning ? 'opacity-0 scale-98' : 'opacity-100 scale-100'
       }`}>
-        <div className="relative w-full max-w-6xl mx-auto h-[260px] lg:h-[300px] bg-gradient-to-b from-slate-900/60 to-slate-950/80 rounded-3xl border border-slate-800/80 px-8 py-4 flex flex-col justify-end shadow-2xl backdrop-blur-md">
+        <div className="relative w-full max-w-6xl mx-auto h-[260px] lg:h-[300px] bg-slate-900/40 rounded-3xl border border-slate-800/80 px-8 py-4 flex flex-col justify-end shadow-2xl">
           
-          {/* Subtle Grid Guidelines */}
           <div className="absolute inset-0 px-8 py-5 flex flex-col justify-between pointer-events-none opacity-15">
             <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono font-bold">{activeCriterion.maxScore} pts</div>
             <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono">{(activeCriterion.maxScore * 0.75).toFixed(0)} pts</div>
@@ -287,44 +278,31 @@ function ProjectorContent() {
             <div className="border-b border-slate-600 w-full"></div>
           </div>
 
-          {/* Dynamic Rising Bars (Displays All Active Contestants or Top 5) */}
           <div className="relative z-10 flex justify-center items-end gap-6 sm:gap-10 h-full pt-4">
             {topFive.map((c, index) => {
               const score = c[activeCriterion.key] as number;
               const heightPercent = Math.max((score / activeCriterion.maxScore) * 100, 8);
 
               return (
-                <div key={c.id} className="flex flex-col items-center h-full justify-end group min-w-[90px] sm:min-w-[110px]">
+                <div key={c.id} className="flex flex-col items-center h-full justify-end min-w-[90px] sm:min-w-[110px]">
                   
-                  {/* Floating Crown & Score Badge */}
-                  <div className="mb-2 text-center transition-all duration-300 group-hover:-translate-y-1">
-                    {index === 0 && (
-                      <span className="text-xl block animate-bounce mb-0.5 drop-shadow-[0_4px_10px_rgba(245,158,11,0.5)]">
-                        👑
-                      </span>
-                    )}
-                    <div className={`font-mono font-black text-xl lg:text-2xl tracking-tight ${activeCriterion.accentColor}`}>
+                  <div className="mb-2 text-center">
+                    {index === 0 && <span className="text-xl block animate-bounce mb-0.5">👑</span>}
+                    <div className={`font-mono font-black text-xl lg:text-2xl ${activeCriterion.accentColor}`}>
                       {score}
                     </div>
-                    <span className={`text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full ${
-                      index === 0 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' :
-                      index === 1 ? 'bg-slate-500/20 text-slate-200 border border-slate-500/40' :
-                      index === 2 ? 'bg-amber-800/20 text-amber-500 border border-amber-800/40' :
-                      'bg-slate-800 text-slate-400'
-                    }`}>
+                    <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
                       #{index + 1}
                     </span>
                   </div>
                   
-                  {/* 3D Vertical Bar Pillar */}
                   <div className="w-16 sm:w-20 bg-slate-900/90 rounded-2xl p-1 flex flex-col justify-end h-full border border-slate-700/60 shadow-inner">
                     <div
-                      className={`w-full rounded-xl transition-all duration-1000 shadow-lg bg-gradient-to-t ${activeCriterion.gradient} ${activeCriterion.glowColor}`}
+                      className={`w-full rounded-xl transition-all duration-700 bg-gradient-to-t ${activeCriterion.gradient}`}
                       style={{ height: `${heightPercent}%` }}
                     />
                   </div>
 
-                  {/* Contestant Name */}
                   <div className="mt-2 text-center w-full">
                     <div className="text-xs sm:text-sm font-extrabold text-white truncate max-w-[120px]">
                       {c.name}
@@ -337,63 +315,51 @@ function ProjectorContent() {
         </div>
       </section>
 
-      {/* Bottom Showcase: Professional Compact Contestant Deck */}
+      {/* Identical Uniform Contestant Grid */}
       <section className="flex-none max-w-6xl w-full mx-auto pb-1">
-        <div className="flex items-center justify-between mb-2 px-1">
-          <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <span>📋 Complete Roster ({sortedStats.length} Contestants)</span>
+        <div className="flex items-center justify-between mb-1.5 px-1">
+          <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400">
+            Contestants Roster ({sortedStats.length})
           </span>
           <span className="text-[10px] font-mono text-slate-500">
-            Scores: Outfit (25) • Essence (20) • Walk (20) • Chem (20) • Impact (15)
+            Outfit (25) • Essence (20) • Walk (20) • Chem (20) • Impact (15)
           </span>
         </div>
 
-        {/* Compact, Clean Scoreboard Badges (Adapts elegantly from 2 to 25 contestants) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[160px] overflow-hidden">
+        {/* All boxes have identical background, border, padding, and layout */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[145px] overflow-hidden">
           {sortedStats.map((c, idx) => {
             const currentVal = c[activeCriterion.key] as number;
-            const isFirst = idx === 0;
 
             return (
               <div
                 key={c.id}
-                className={`flex flex-col justify-between p-2 rounded-xl border transition-all duration-300 ${
-                  isFirst
-                    ? 'bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 border-amber-500/80 shadow-md shadow-amber-500/10'
-                    : idx < 3
-                    ? 'bg-slate-900/90 border-slate-700/90'
-                    : 'bg-slate-900/60 border-slate-800/80'
-                }`}
+                className="flex flex-col justify-between p-2 rounded-xl border border-slate-700/80 bg-slate-900/80 shadow-sm"
               >
-                {/* Header: Rank + Name + Current Category Score */}
+                {/* Header: Rank + Name + Category Score */}
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <div className="flex items-center gap-1.5 truncate">
-                    <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                      idx === 0 ? 'bg-amber-500 text-black' :
-                      idx === 1 ? 'bg-slate-300 text-black' :
-                      idx === 2 ? 'bg-amber-800 text-white' :
-                      'bg-slate-800 text-slate-400'
-                    }`}>
+                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-slate-800 text-amber-400 border border-slate-700">
                       #{idx + 1}
                     </span>
-                    <span className="text-xs font-black text-slate-100 truncate">
+                    <span className="text-xs font-bold text-slate-100 truncate">
                       {c.name}
                     </span>
                   </div>
                   
-                  <span className={`text-xs font-mono font-black ${isFirst ? 'text-amber-400' : 'text-slate-200'}`}>
+                  <span className="text-xs font-mono font-black text-amber-400">
                     {currentVal}
                   </span>
                 </div>
 
-                {/* Footer: Compact Category Summary */}
-                <div className="flex justify-between items-center text-[9px] text-slate-400 font-mono border-t border-slate-800/70 pt-1">
-                  <span>O: <b className="text-slate-200">{c.avgOutfit}</b></span>
-                  <span>E: <b className="text-slate-200">{c.avgEssence}</b></span>
-                  <span>W: <b className="text-slate-200">{c.avgWalk}</b></span>
-                  <span>C: <b className="text-slate-200">{c.avgChemistry}</b></span>
-                  <span>I: <b className="text-slate-200">{c.avgConfidence}</b></span>
-                  <span className="text-amber-400 font-bold ml-1">Total: {c.avgTotal}</span>
+                {/* Footer: Multi-Attribute Stats */}
+                <div className="flex justify-between items-center text-[9px] text-slate-400 font-mono border-t border-slate-800/80 pt-1">
+                  <span>O:{c.avgOutfit}</span>
+                  <span>E:{c.avgEssence}</span>
+                  <span>W:{c.avgWalk}</span>
+                  <span>C:{c.avgChemistry}</span>
+                  <span>I:{c.avgConfidence}</span>
+                  <span className="text-amber-300 font-bold ml-1">T:{c.avgTotal}</span>
                 </div>
               </div>
             );
@@ -412,7 +378,7 @@ function ProjectorContent() {
 
 export default function ProjectorPage() {
   return (
-    <Suspense fallback={<div className="h-screen w-screen bg-[#06080e] text-white flex items-center justify-center font-mono text-sm">Launching Stage Presentation Arena...</div>}>
+    <Suspense fallback={<div className="h-screen w-screen bg-[#070b14] text-white flex items-center justify-center font-mono text-sm">Launching Stage Presentation Arena...</div>}>
       <ProjectorContent />
     </Suspense>
   );
