@@ -22,6 +22,7 @@ interface CriterionConfig {
   maxScore: number;
   gradient: string;
   accentColor: string;
+  durationSeconds: number; // 15s for main page, 5s for attribute pages
 }
 
 const CRITERIA: CriterionConfig[] = [
@@ -31,7 +32,8 @@ const CRITERIA: CriterionConfig[] = [
     titleMl: 'ആകെ സ്കോർ ലീഡർബോർഡ്',
     maxScore: 100,
     gradient: 'from-amber-600 via-orange-500 to-amber-300',
-    accentColor: 'text-amber-400'
+    accentColor: 'text-amber-400',
+    durationSeconds: 15
   },
   {
     key: 'avgOutfit',
@@ -39,7 +41,8 @@ const CRITERIA: CriterionConfig[] = [
     titleMl: 'വേഷവിധാനം',
     maxScore: 25,
     gradient: 'from-pink-600 via-rose-500 to-rose-300',
-    accentColor: 'text-rose-400'
+    accentColor: 'text-rose-400',
+    durationSeconds: 5
   },
   {
     key: 'avgEssence',
@@ -47,7 +50,8 @@ const CRITERIA: CriterionConfig[] = [
     titleMl: 'കേരളത്തനിമ',
     maxScore: 20,
     gradient: 'from-emerald-600 via-teal-500 to-emerald-300',
-    accentColor: 'text-emerald-400'
+    accentColor: 'text-emerald-400',
+    durationSeconds: 5
   },
   {
     key: 'avgWalk',
@@ -55,7 +59,8 @@ const CRITERIA: CriterionConfig[] = [
     titleMl: 'വേദിയിലെ നടനവും പ്രൗഢിയും',
     maxScore: 20,
     gradient: 'from-blue-600 via-indigo-500 to-cyan-300',
-    accentColor: 'text-cyan-400'
+    accentColor: 'text-cyan-400',
+    durationSeconds: 5
   },
   {
     key: 'avgChemistry',
@@ -63,7 +68,8 @@ const CRITERIA: CriterionConfig[] = [
     titleMl: 'ഒരുമയും പൊരുത്തവും',
     maxScore: 20,
     gradient: 'from-purple-600 via-fuchsia-500 to-pink-300',
-    accentColor: 'text-fuchsia-400'
+    accentColor: 'text-fuchsia-400',
+    durationSeconds: 5
   },
   {
     key: 'avgConfidence',
@@ -71,7 +77,8 @@ const CRITERIA: CriterionConfig[] = [
     titleMl: 'ആത്മവിശ്വാസവും പ്രകടനവും',
     maxScore: 15,
     gradient: 'from-amber-500 via-yellow-400 to-lime-300',
-    accentColor: 'text-yellow-400'
+    accentColor: 'text-yellow-400',
+    durationSeconds: 5
   }
 ];
 
@@ -83,6 +90,7 @@ function ProjectorContent() {
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [secondsRemaining, setSecondsRemaining] = useState(15);
 
   const isAuthorized = secretKey === 'bmka2026screen';
 
@@ -138,7 +146,7 @@ function ProjectorContent() {
     }
   };
 
-  // Background real-time score poll
+  // Background real-time score refresh every 3 seconds
   useEffect(() => {
     if (!isAuthorized) return;
     fetchScores();
@@ -146,14 +154,23 @@ function ProjectorContent() {
     return () => clearInterval(interval);
   }, [isAuthorized]);
 
-  // Slideshow auto-cycle (every 8 seconds)
+  // Synchronized countdown and dynamic slide timer
   useEffect(() => {
     if (isPaused) return;
-    const slideTimer = setInterval(() => {
-      setCurrentSlideIndex((prev) => (prev + 1) % CRITERIA.length);
-    }, 8000);
-    return () => clearInterval(slideTimer);
-  }, [isPaused]);
+
+    const timer = setInterval(() => {
+      setSecondsRemaining((prev) => {
+        if (prev <= 1) {
+          const nextIndex = (currentSlideIndex + 1) % CRITERIA.length;
+          setCurrentSlideIndex(nextIndex);
+          return CRITERIA[nextIndex].durationSeconds;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isPaused, currentSlideIndex]);
 
   if (!isAuthorized) {
     return (
@@ -184,13 +201,14 @@ function ProjectorContent() {
             <span>Live Audience Scoreboard</span>
           </div>
 
-          {/* Quick Category Indicator Badges */}
+          {/* Category Badges with Countdown Indicator */}
           <div className="flex items-center gap-1.5 overflow-hidden">
             {CRITERIA.map((c, i) => (
               <button
                 key={c.key}
                 onClick={() => {
                   setCurrentSlideIndex(i);
+                  setSecondsRemaining(c.durationSeconds);
                   setIsPaused(true);
                 }}
                 className={`text-[10px] px-2 py-0.5 rounded transition ${
@@ -202,12 +220,19 @@ function ProjectorContent() {
                 {i === 0 ? 'Overall' : `C${i}`}
               </button>
             ))}
+
             <button
               onClick={() => setIsPaused(!isPaused)}
               className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 ml-2 border border-slate-700 font-mono"
             >
               {isPaused ? '▶ Play' : '⏸ Pause'}
             </button>
+
+            {!isPaused && (
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700 ml-1">
+                ⏱ {secondsRemaining}s
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-4 text-slate-400 font-mono">
@@ -346,7 +371,7 @@ function ProjectorContent() {
           Bedford Marston Kerala Association • Kerala Thanima 2026
         </div>
         <div className="flex items-center gap-4 mt-2 sm:mt-0">
-          <span>Auto-cycling every 8 seconds</span>
+          <span>Timing: Main page <strong>15s</strong> • Criteria pages <strong>5s</strong></span>
           <span>Press <strong>F11</strong> for Fullscreen</span>
         </div>
       </footer>
@@ -356,7 +381,7 @@ function ProjectorContent() {
 
 export default function ProjectorPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#070a12] text-white flex items-center justify-center font-mono text-sm">Initializing Multi-Attribute Display...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-[#070a12] text-white flex items-center justify-center font-mono text-sm">Initializing Stage Display...</div>}>
       <ProjectorContent />
     </Suspense>
   );
