@@ -3,55 +3,41 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabase';
 
-interface Couple {
-  id: string;
-  name: string;
-}
-
-interface Vote {
-  couple_id: string;
-  outfit: number;
-  essence: number;
-  walk: number;
-  chemistry: number;
-  confidence: number;
-  total: number;
-}
-
 export default function Admin() {
   const [pin, setPin] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [couples, setCouples] = useState<Couple[]>([]);
-  const [votes, setVotes] = useState<Vote[]>([]);
+  const [couples, setCouples] = useState<any[]>([]);
+  const [votes, setVotes] = useState<any[]>([]);
   const [newCoupleName, setNewCoupleName] = useState('');
   const [adding, setAdding] = useState(false);
-  const [loginError, setLoginError] = useState('');
-  const [statusMsg, setStatusMsg] = useState('Connecting...');
+  const [statusMsg, setStatusMsg] = useState('Checking database connection...');
 
   const correctPin = '2026';
 
   const fetchData = async () => {
-    setStatusMsg('Loading database...');
+    setStatusMsg('Loading contestants...');
     try {
-      const { data: couplesData, error: cErr } = await supabase
+      const { data: cData, error: cErr } = await supabase
         .from('couples')
         .select('*')
         .order('name', { ascending: true });
 
-      const { data: votesData, error: vErr } = await supabase
+      const { data: vData, error: vErr } = await supabase
         .from('votes')
         .select('*');
 
       if (cErr) {
-        setStatusMsg('Database Error: ' + cErr.message);
+        setStatusMsg('Database query error: ' + cErr.message);
+        alert('Database error: ' + cErr.message);
         return;
       }
 
-      setCouples(couplesData || []);
-      setVotes(votesData || []);
-      setStatusMsg(`Connected: ${couplesData?.length || 0} couples loaded`);
+      setCouples(cData || []);
+      setVotes(vData || []);
+      setStatusMsg(`Connected: ${cData?.length || 0} couples loaded`);
     } catch (err: any) {
-      setStatusMsg('Connection Error: ' + err.message);
+      setStatusMsg('Network failure: ' + err.message);
+      alert('Network failure: ' + err.message);
     }
   };
 
@@ -65,9 +51,8 @@ export default function Admin() {
     e.preventDefault();
     if (pin === correctPin) {
       setIsAuthenticated(true);
-      setLoginError('');
     } else {
-      setLoginError('Invalid Passcode. Access denied.');
+      alert('Invalid PIN');
       setPin('');
     }
   };
@@ -75,12 +60,12 @@ export default function Admin() {
   const handleAddCouple = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCoupleName.trim()) {
-      alert('Please enter a couple name.');
+      alert('Please enter a contestant name');
       return;
     }
 
     setAdding(true);
-    setStatusMsg('Saving to database...');
+    setStatusMsg('Inserting contestant into database...');
 
     try {
       const { data, error } = await supabase
@@ -91,8 +76,8 @@ export default function Admin() {
       setAdding(false);
 
       if (error) {
-        alert('Database Error: ' + error.message);
-        setStatusMsg('Error: ' + error.message);
+        alert('Insert error: ' + error.message);
+        setStatusMsg('Insert error: ' + error.message);
         return;
       }
 
@@ -101,39 +86,37 @@ export default function Admin() {
       fetchData();
     } catch (err: any) {
       setAdding(false);
-      alert('Network Error: ' + err.message);
-      setStatusMsg('Error: ' + err.message);
+      alert('Connection error: ' + err.message);
+      setStatusMsg('Connection error: ' + err.message);
     }
   };
 
-  const handleDeleteCouple = async (id: string) => {
-    if (!confirm('Are you sure you want to remove this contestant? All associated scores will be deleted.')) return;
-    
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to remove this contestant?')) return;
     try {
       const { error } = await supabase.from('couples').delete().eq('id', id);
       if (error) {
-        alert('Failed to delete: ' + error.message);
+        alert('Delete failed: ' + error.message);
         return;
       }
       fetchData();
     } catch (err: any) {
-      alert('Error deleting: ' + err.message);
+      alert('Delete error: ' + err.message);
     }
   };
 
   const handleResetVotes = async () => {
-    if (!confirm('Danger: This will permanently wipe ALL audience votes. Proceed?')) return;
-    
+    if (!confirm('Permanently reset all votes?')) return;
     try {
       const { error } = await supabase.from('votes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       if (error) {
-        alert('Failed to reset votes: ' + error.message);
+        alert('Reset failed: ' + error.message);
         return;
       }
-      alert('All votes have been reset.');
+      alert('All votes cleared!');
       fetchData();
     } catch (err: any) {
-      alert('Error resetting votes: ' + err.message);
+      alert('Reset error: ' + err.message);
     }
   };
 
@@ -166,40 +149,23 @@ export default function Admin() {
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <form onSubmit={handleLogin} className="bg-slate-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-slate-700 text-white">
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-orange-500/20 text-orange-500 mb-3 text-xl font-bold">
-              🔒
-            </div>
-            <h2 className="text-xl font-bold">Admin Restricted Access</h2>
-            <p className="text-xs text-slate-400 mt-1">Authorized personnel only.</p>
-          </div>
-
-          {loginError && (
-            <div className="mb-4 p-2.5 bg-red-900/40 border border-red-700 text-red-200 text-xs rounded-lg text-center font-medium">
-              {loginError}
-            </div>
-          )}
-
-          <div className="mb-4">
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={pin}
-              autoFocus
-              onChange={(e) => setPin(e.target.value)}
-              className="w-full p-3 bg-slate-700/60 border border-slate-600 rounded-xl text-white text-center text-xl tracking-widest focus:outline-none focus:ring-2 focus:ring-orange-500"
-            />
-          </div>
-
-          <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 font-bold py-3 rounded-xl transition shadow">
-            Authenticate
+        <form onSubmit={handleLogin} className="bg-slate-800 p-8 rounded-2xl shadow-2xl max-w-sm w-full border border-slate-700 text-white text-center">
+          <div className="text-3xl mb-2">🔒</div>
+          <h2 className="text-xl font-bold mb-1">Restricted Access</h2>
+          <p className="text-xs text-slate-400 mb-6">Enter PIN to access Admin Dashboard</p>
+          <input
+            type="password"
+            placeholder="••••••••"
+            value={pin}
+            autoFocus
+            onChange={(e) => setPin(e.target.value)}
+            className="w-full p-3 bg-slate-700 border border-slate-600 rounded-xl mb-4 text-center text-xl tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+          <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 font-bold py-3 rounded-xl transition">
+            Unlock Dashboard
           </button>
-          
-          <div className="text-center mt-5">
-            <Link href="/" className="text-xs text-slate-400 hover:text-white transition">
-              ← Return to Voting Page
-            </Link>
+          <div className="mt-4">
+            <Link href="/" className="text-xs text-slate-400 hover:underline">← Back to Voting Screen</Link>
           </div>
         </form>
       </main>
@@ -208,14 +174,14 @@ export default function Admin() {
 
   return (
     <main className="min-h-screen bg-slate-900 text-white p-4 sm:p-8">
-      <div className="max-w-5xl mx-auto space-y-8">
+      <div className="max-w-5xl mx-auto space-y-6">
         
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
           <div>
             <h1 className="text-2xl font-black text-amber-500">BMKA 2026 - Live Leaderboard</h1>
-            <p className="text-xs text-slate-400">Audience Poll Results & Official Management</p>
-            <span className="inline-block mt-1 text-[11px] px-2 py-0.5 rounded bg-slate-800 text-emerald-400 font-mono border border-slate-700">
+            <p className="text-xs text-slate-400">Audience Poll Results & Contestant Management</p>
+            <span className="inline-block mt-1 text-[11px] px-2.5 py-0.5 rounded bg-slate-800 text-emerald-400 font-mono border border-slate-700">
               {statusMsg}
             </span>
           </div>
@@ -232,14 +198,14 @@ export default function Admin() {
           </div>
         </div>
 
-        {/* Live Voting Bar Graphs */}
-        <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700 space-y-6">
+        {/* Live Leaderboard Bars */}
+        <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700 space-y-5">
           <h2 className="text-lg font-bold text-slate-100 flex items-center justify-between">
-            <span>📊 Live Ranking (Average Score out of 100)</span>
+            <span>📊 Live Ranking (Average Score / 100)</span>
             <span className="text-xs text-slate-400 font-normal">Total Votes: {votes.length}</span>
           </h2>
 
-          <div className="space-y-5">
+          <div className="space-y-4">
             {stats.map((c, index) => (
               <div key={c.id} className="space-y-1.5">
                 <div className="flex justify-between text-sm">
@@ -266,19 +232,19 @@ export default function Admin() {
               </div>
             ))}
             {couples.length === 0 && (
-              <p className="text-sm text-slate-400 italic">No couples loaded. Add contestants below.</p>
+              <p className="text-sm text-slate-400 italic">No contestants loaded. Add a couple below.</p>
             )}
           </div>
         </div>
 
-        {/* Add Couple Box */}
+        {/* Manage Contestants */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700">
-            <h2 className="text-base font-bold mb-3">➕ Add Couple</h2>
+            <h2 className="text-base font-bold mb-3">➕ Add Contestant</h2>
             <form onSubmit={handleAddCouple} className="flex gap-2">
               <input
                 type="text"
-                placeholder="Enter Couple Name (e.g. Couple 5)"
+                placeholder="Couple Name (e.g. Rahul & Anjali)"
                 value={newCoupleName}
                 onChange={(e) => setNewCoupleName(e.target.value)}
                 className="flex-1 p-2.5 bg-slate-700 border border-slate-600 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -286,7 +252,7 @@ export default function Admin() {
               <button 
                 type="submit" 
                 disabled={adding}
-                className="bg-green-700 hover:bg-green-600 px-4 py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
+                className="bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
               >
                 {adding ? 'Adding...' : 'Add'}
               </button>
@@ -294,18 +260,18 @@ export default function Admin() {
           </div>
 
           <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700">
-            <h2 className="text-base font-bold mb-3">👥 Manage Registered Couples ({couples.length})</h2>
+            <h2 className="text-base font-bold mb-3">👥 Contestants List ({couples.length})</h2>
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
               {couples.map((c) => (
                 <div key={c.id} className="flex justify-between items-center p-2.5 rounded-lg bg-slate-700/50 border border-slate-600 text-sm">
                   <span>{c.name}</span>
-                  <button onClick={() => handleDeleteCouple(c.id)} className="text-red-400 hover:text-red-300 text-xs px-2.5 py-1 bg-red-950/40 rounded border border-red-800">
+                  <button onClick={() => handleDelete(c.id)} className="text-red-400 hover:text-red-300 text-xs px-2.5 py-1 bg-red-950/40 rounded border border-red-800">
                     Remove
                   </button>
                 </div>
               ))}
               {couples.length === 0 && (
-                <p className="text-xs text-slate-400 italic">No contestants registered.</p>
+                <p className="text-xs text-slate-400 italic">No contestants in list.</p>
               )}
             </div>
           </div>
