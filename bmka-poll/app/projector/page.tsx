@@ -54,7 +54,7 @@ function ProjectorContent() {
 
   const fetchStageData = async () => {
     try {
-      // 1. Check Display Mode (Live vs All)
+      // 1. Check Display Mode (Remote-controlled by Admin)
       const { data: modeData } = await supabase
         .from('app_settings')
         .select('value')
@@ -197,11 +197,6 @@ function ProjectorContent() {
     return () => clearInterval(timer);
   }, [session]);
 
-  const toggleScreenMode = async (mode: 'live' | 'all') => {
-    setDisplayMode(mode);
-    await supabase.from('app_settings').upsert([{ key: 'projector_display_mode', value: { mode } }]);
-  };
-
   if (!isAuthorized) {
     return (
       <main className="h-screen w-screen bg-black flex items-center justify-center text-zinc-600 font-mono text-sm">
@@ -296,28 +291,11 @@ function ProjectorContent() {
           </span>
         </div>
 
-        {/* Local Screen Mode Switcher */}
-        <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2 py-1 rounded-xl">
-          <button
-            onClick={() => toggleScreenMode('live')}
-            className={`text-[10px] font-bold px-3 py-1 rounded-lg transition ${
-              displayMode === 'live'
-                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            🎯 Live Stage (60s Timer)
-          </button>
-          <button
-            onClick={() => toggleScreenMode('all')}
-            className={`text-[10px] font-bold px-3 py-1 rounded-lg transition ${
-              displayMode === 'all'
-                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            📊 All Contestants Details
-          </button>
+        {/* Dynamic Display Mode Indicator */}
+        <div className="text-center">
+          <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400 px-3 py-1 rounded-full bg-slate-900 border border-slate-800">
+            {displayMode === 'live' ? '🎯 Current Contestant Scoring Arena' : '📊 Full Roster Leaderboard & Scores'}
+          </span>
         </div>
 
         <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl">
@@ -523,7 +501,7 @@ function ProjectorContent() {
       {/* Broadcast Footer */}
       <footer className="flex-none flex justify-between items-center text-[10px] text-slate-500 font-mono pt-2 border-t border-slate-800/40">
         <span>Bedford Marston Kerala Association • Official Scrutiny Console</span>
-        <span>Auto Sync Active • Press <strong>F11</strong> for Stage Fullscreen Mode</span>
+        <span>Controlled via Admin Console • Press <strong>F11</strong> for Stage Fullscreen</span>
       </footer>
     </main>
   );
