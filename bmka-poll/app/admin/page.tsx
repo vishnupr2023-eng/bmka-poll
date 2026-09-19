@@ -61,7 +61,7 @@ export default function Admin() {
   const [winnerActive, setWinnerActive] = useState(false);
   const [winnerToggling, setWinnerToggling] = useState(false);
 
-  // Geo config
+  // Geo config state
   const [geoConfig, setGeoConfig] = useState<GeoConfig>({
     enabled: false,
     lat: 52.13597,
@@ -124,7 +124,14 @@ export default function Admin() {
         setUniqueVotersCount(tokens.size);
       }
       if (activeData) setActiveUsersNow(activeData.length);
-      if (geoData?.value) setGeoConfig(geoData.value);
+      if (geoData?.value) {
+        setGeoConfig({
+          enabled: Boolean(geoData.value.enabled),
+          lat: typeof geoData.value.lat === 'number' ? geoData.value.lat : 52.13597,
+          lng: typeof geoData.value.lng === 'number' ? geoData.value.lng : -0.46665,
+          radius_meters: typeof geoData.value.radius_meters === 'number' ? geoData.value.radius_meters : 500
+        });
+      }
       if (winData?.value?.active !== undefined) setWinnerActive(winData.value.active);
       if (modeData?.value?.mode) setProjectorMode(modeData.value.mode);
 
@@ -170,7 +177,7 @@ export default function Admin() {
     setModeUpdating(true);
     const { error } = await supabase
       .from('app_settings')
-      .upsert([{ key: 'projector_display_mode', value: { mode } }]);
+      .upsert([{ key: 'projector_display_mode', value: { mode } }], { onConflict: 'key' });
     setModeUpdating(false);
 
     if (error) {
@@ -194,12 +201,12 @@ export default function Admin() {
       status: 'voting'
     };
 
-    await supabase.from('app_settings').upsert([{ key: 'projector_display_mode', value: { mode: 'live' } }]);
+    await supabase.from('app_settings').upsert([{ key: 'projector_display_mode', value: { mode: 'live' } }], { onConflict: 'key' });
     setProjectorMode('live');
 
     const { error } = await supabase
       .from('app_settings')
-      .upsert([{ key: 'live_contestant_session', value: newSession }]);
+      .upsert([{ key: 'live_contestant_session', value: newSession }], { onConflict: 'key' });
     setSessionUpdating(false);
 
     if (error) {
@@ -218,7 +225,7 @@ export default function Admin() {
 
     const { error } = await supabase
       .from('app_settings')
-      .upsert([{ key: 'live_contestant_session', value: updated }]);
+      .upsert([{ key: 'live_contestant_session', value: updated }], { onConflict: 'key' });
     setSessionUpdating(false);
 
     if (error) {
@@ -239,7 +246,7 @@ export default function Admin() {
 
     const { error } = await supabase
       .from('app_settings')
-      .upsert([{ key: 'live_contestant_session', value: reset }]);
+      .upsert([{ key: 'live_contestant_session', value: reset }], { onConflict: 'key' });
     setSessionUpdating(false);
 
     if (error) {
@@ -296,7 +303,7 @@ export default function Admin() {
     setWinnerToggling(true);
     const { error } = await supabase
       .from('app_settings')
-      .upsert([{ key: 'winner_announcement', value: { active: nextState } }]);
+      .upsert([{ key: 'winner_announcement', value: { active: nextState } }], { onConflict: 'key' });
     setWinnerToggling(false);
 
     if (error) {
@@ -306,36 +313,66 @@ export default function Admin() {
     }
   };
 
-  const handleSaveGeo = async () => {
+  // Immediate Persistent Geo-Lock Toggle
+  const handleToggleGeoEnabled = async () => {
+    const nextEnabled = !geoConfig.enabled;
+    const updated = { ...geoConfig, enabled: nextEnabled };
+    setGeoConfig(updated);
     setGeoSaving(true);
+
     const { error } = await supabase
       .from('app_settings')
-      .upsert([{ key: 'geo_fence', value: geoConfig }]);
-    setGeoSaving(false);
+      .upsert([{ key: 'geo_fence', value: updated }], { onConflict: 'key' });
 
+    setGeoSaving(false);
+    if (error) {
+      alert('Failed to update Geo-Lock status: ' + error.message);
+      setGeoConfig(geoConfig); // revert on failure
+    } else {
+      alert(`Geo-Lock is now ${nextEnabled ? 'ACTIVE (Restricting access)' : 'DISABLED (Public access allowed)'}!`);
+    }
+  };
+
+  // Save manual parameters (lat, lng, radius)
+  const handleSaveGeo = async () => {
+    setGeoSaving(true);
+    const payload = {
+      enabled: geoConfig.enabled,
+      lat: Number(geoConfig.lat),
+      lng: Number(geoConfig.lng),
+      radius_meters: Number(geoConfig.radius_meters)
+    };
+
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert([{ key: 'geo_fence', value: payload }], { onConflict: 'key' });
+
+    setGeoSaving(false);
     if (error) {
       alert('Failed to save Geo-Lock: ' + error.message);
     } else {
-      alert(`Geo-Lock saved successfully (${geoConfig.enabled ? 'ACTIVE' : 'DISABLED'})!`);
+      alert(`Geo-Lock coordinates and radius saved successfully! (${payload.enabled ? 'ACTIVE' : 'DISABLED'})`);
     }
   };
 
   const handleDetectCurrentLocation = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation not supported on this browser.');
+      alert('Geolocation is not supported by this browser.');
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        const newLat = parseFloat(pos.coords.latitude.toFixed(6));
+        const newLng = parseFloat(pos.coords.longitude.toFixed(6));
         setGeoConfig((prev) => ({
           ...prev,
-          lat: parseFloat(pos.coords.latitude.toFixed(6)),
-          lng: parseFloat(pos.coords.longitude.toFixed(6))
+          lat: newLat,
+          lng: newLng
         }));
-        alert(`Location pinned: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`);
+        alert(`Location acquired: Lat ${newLat}, Lng ${newLng}. Click "Save Geo-Lock Settings" to apply.`);
       },
       (err) => alert('GPS error: ' + err.message),
-      { enableHighAccuracy: true }
+      { enableHighAccuracy: true, timeout: 10000 }
     );
   };
 
@@ -639,12 +676,13 @@ export default function Admin() {
             </div>
 
             <button
-              onClick={() => setGeoConfig({ ...geoConfig, enabled: !geoConfig.enabled })}
+              onClick={handleToggleGeoEnabled}
+              disabled={geoSaving}
               className={`text-xs px-4 py-2 rounded-xl font-bold transition ${
                 geoConfig.enabled ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
               }`}
             >
-              {geoConfig.enabled ? 'Enabled ✓' : 'Enable Geo-Lock'}
+              {geoConfig.enabled ? 'Enabled ✓ (Click to Turn OFF)' : 'Disabled (Click to Turn ON)'}
             </button>
           </div>
 
