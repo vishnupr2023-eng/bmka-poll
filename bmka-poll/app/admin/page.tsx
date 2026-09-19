@@ -39,6 +39,10 @@ export default function Admin() {
   const [adding, setAdding] = useState(false);
   const [statusMsg, setStatusMsg] = useState('Connecting...');
 
+  // Stage display mode state ('live' | 'all')
+  const [projectorMode, setProjectorMode] = useState<'live' | 'all'>('live');
+  const [modeUpdating, setModeUpdating] = useState(false);
+
   // Live stage session state
   const [liveSession, setLiveSession] = useState<LiveSession>({
     current_couple_id: null,
@@ -98,6 +102,12 @@ export default function Admin() {
         .eq('key', 'live_contestant_session')
         .single();
 
+      const { data: modeData } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'projector_display_mode')
+        .single();
+
       if (couplesData) {
         const sorted = [...couplesData].sort((a, b) => extractChestNumber(a.name) - extractChestNumber(b.name));
         setCouples(sorted);
@@ -113,6 +123,8 @@ export default function Admin() {
       if (activeData) setActiveUsersNow(activeData.length);
       if (geoData?.value) setGeoConfig(geoData.value);
       if (winData?.value?.active !== undefined) setWinnerActive(winData.value.active);
+      if (modeData?.value?.mode) setProjectorMode(modeData.value.mode);
+
       if (sessionData?.value) {
         setLiveSession(sessionData.value);
         if (sessionData.value.current_couple_id) {
@@ -144,7 +156,20 @@ export default function Admin() {
     }
   };
 
-  // Live Stage Session Controls
+  const handleSwitchProjectorMode = async (mode: 'live' | 'all') => {
+    setModeUpdating(true);
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert([{ key: 'projector_display_mode', value: { mode } }]);
+    setModeUpdating(false);
+
+    if (error) {
+      alert('Failed to switch projector screen: ' + error.message);
+    } else {
+      setProjectorMode(mode);
+    }
+  };
+
   const handleStartVotingSession = async () => {
     if (!selectedContestantId) {
       alert('Please select a contestant first');
@@ -158,6 +183,10 @@ export default function Admin() {
       started_at: new Date().toISOString(),
       status: 'voting'
     };
+
+    // Auto set screen to live single view when voting starts
+    await supabase.from('app_settings').upsert([{ key: 'projector_display_mode', value: { mode: 'live' } }]);
+    setProjectorMode('live');
 
     const { error } = await supabase
       .from('app_settings')
@@ -327,7 +356,41 @@ export default function Admin() {
           </div>
         </div>
 
-        {/* ================= STAGE LIVE CONTROLLER (NEW) ================= */}
+        {/* ================= PROJECTOR SCREEN MASTER VIEW SWITCHER ================= */}
+        <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-3 shadow-lg">
+          <div>
+            <span className="text-[10px] font-mono uppercase text-amber-400 font-bold block">Projector Big Screen Display Mode</span>
+            <p className="text-xs text-slate-300">Choose what the stage screen shows right now</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleSwitchProjectorMode('live')}
+              disabled={modeUpdating}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                projectorMode === 'live'
+                  ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              <span>🎯 Live Stage (60s Timer)</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchProjectorMode('all')}
+              disabled={modeUpdating}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                projectorMode === 'all'
+                  ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              <span>📊 All Contestants Details</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ================= STAGE LIVE CONTROLLER ================= */}
         <div className="bg-gradient-to-r from-amber-950/60 via-slate-900 to-slate-900 border-2 border-amber-500/70 p-6 rounded-3xl shadow-2xl space-y-5">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-3">
             <div className="flex items-center gap-3">
@@ -399,7 +462,6 @@ export default function Admin() {
             </div>
           </div>
 
-          {/* Current Status Preview */}
           <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800/80 flex flex-wrap justify-between items-center text-xs font-mono">
             <div>
               <span className="text-slate-500">Currently Active: </span>
