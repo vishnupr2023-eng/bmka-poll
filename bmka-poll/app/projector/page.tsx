@@ -83,7 +83,6 @@ const CRITERIA: CriterionConfig[] = [
   }
 ];
 
-// Helper to extract numeric chest number ("Chest No 2" -> 2)
 function extractChestNumber(name: string): number {
   const match = name.match(/\d+/);
   return match ? parseInt(match[0], 10) : 999;
@@ -99,6 +98,7 @@ function ProjectorContent() {
   const [isPaused, setIsPaused] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(15);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [winnerActive, setWinnerActive] = useState(false);
 
   const isAuthorized = secretKey === 'bmka2026screen';
 
@@ -106,6 +106,11 @@ function ProjectorContent() {
     try {
       const { data: couples } = await supabase.from('couples').select('*');
       const { data: votes } = await supabase.from('votes').select('*');
+      const { data: winData } = await supabase.from('app_settings').select('value').eq('key', 'winner_announcement').single();
+
+      if (winData?.value?.active !== undefined) {
+        setWinnerActive(winData.value.active);
+      }
 
       if (couples && votes) {
         setTotalVotes(votes.length);
@@ -113,13 +118,13 @@ function ProjectorContent() {
         const calculated: CoupleStat[] = couples.map((c) => {
           const cVotes = votes.filter((v: any) => v.couple_id === c.id);
           const count = cVotes.length;
-          const chestNumber = extractChestNumber(c.name);
+          const chestNum = extractChestNumber(c.name);
 
           if (count === 0) {
             return {
               id: c.id,
               name: c.name,
-              chestNumber,
+              chestNumber: chestNum,
               count: 0,
               avgTotal: 0,
               avgOutfit: 0,
@@ -139,7 +144,7 @@ function ProjectorContent() {
           return {
             id: c.id,
             name: c.name,
-            chestNumber,
+            chestNumber: chestNum,
             count,
             avgTotal: parseFloat((sumTotal / count).toFixed(1)),
             avgOutfit: parseFloat((sumOutfit / count).toFixed(1)),
@@ -161,7 +166,7 @@ function ProjectorContent() {
   useEffect(() => {
     if (!isAuthorized) return;
     fetchScores();
-    const interval = setInterval(fetchScores, 3000);
+    const interval = setInterval(fetchScores, 2500);
     return () => clearInterval(interval);
   }, [isAuthorized]);
 
@@ -175,7 +180,7 @@ function ProjectorContent() {
   };
 
   useEffect(() => {
-    if (isPaused) return;
+    if (isPaused || winnerActive) return;
 
     const timer = setInterval(() => {
       setSecondsRemaining((prev) => {
@@ -189,7 +194,7 @@ function ProjectorContent() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isPaused, currentSlideIndex]);
+  }, [isPaused, currentSlideIndex, winnerActive]);
 
   if (!isAuthorized) {
     return (
@@ -201,22 +206,100 @@ function ProjectorContent() {
 
   const activeCriterion = CRITERIA[currentSlideIndex];
 
-  // Primary sort by Score descending; Tie-break by Chest Number ascending (1, 2, 3...)
+  // Natural numeric order with score as primary sort
   const sortedStats = [...stats].sort((a, b) => {
     const scoreDiff = (b[activeCriterion.key] as number) - (a[activeCriterion.key] as number);
     if (scoreDiff !== 0) return scoreDiff;
     return a.chestNumber - b.chestNumber;
   });
 
-  // Top 5 Leaders for the main arena view
-  const topFive = sortedStats.slice(0, 5);
+  const overallSorted = [...stats].sort((a, b) => {
+    const scoreDiff = b.avgTotal - a.avgTotal;
+    if (scoreDiff !== 0) return scoreDiff;
+    return a.chestNumber - b.chestNumber;
+  });
+
+  const winner1 = overallSorted[0];
+  const winner2 = overallSorted[1];
+  const winner3 = overallSorted[2];
 
   return (
-    <main className="h-screen w-screen bg-[#050811] text-white flex flex-col justify-between overflow-hidden select-none p-4 lg:p-8 font-sans">
+    <main className="h-screen w-screen bg-[#040711] text-white flex flex-col justify-between overflow-hidden select-none p-4 lg:p-6 font-sans relative">
+      
+      {/* ================= WINNER ANNOUNCEMENT MODAL OVERLAY ================= */}
+      {winnerActive && winner1 && (
+        <div className="absolute inset-0 z-50 bg-[#030611]/95 backdrop-blur-xl flex flex-col justify-between p-8 text-center animate-fadeIn">
+          {/* Confetti & Fireworks Glow Effect */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-amber-500/15 rounded-full blur-3xl animate-pulse"></div>
+            <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-yellow-400/15 rounded-full blur-3xl animate-pulse delay-700"></div>
+          </div>
+
+          <div className="relative z-10 pt-2">
+            <span className="text-xs uppercase tracking-widest font-mono text-amber-400 bg-amber-500/10 px-4 py-1.5 rounded-full border border-amber-500/30">
+              BMKA Kerala Thanima 2026 • Official Championship Result
+            </span>
+            <h1 className="text-4xl lg:text-6xl font-black bg-gradient-to-r from-yellow-200 via-amber-400 to-orange-400 bg-clip-text text-transparent mt-3">
+              വിജയികൾ / The Champions
+            </h1>
+          </div>
+
+          {/* 3-Tier Podium */}
+          <div className="relative z-10 max-w-5xl mx-auto w-full grid grid-cols-3 gap-6 items-end my-auto pt-6">
+            
+            {/* 2nd Place */}
+            {winner2 && (
+              <div className="flex flex-col items-center">
+                <span className="text-3xl mb-1">🥈</span>
+                <span className="text-xs font-mono font-bold text-slate-300 uppercase">1st Runner Up</span>
+                <div className="text-2xl font-black text-white mt-1 truncate max-w-[200px]">{winner2.name}</div>
+                <div className="text-xl font-mono font-black text-slate-300 mt-1">{winner2.avgTotal} pts</div>
+                <div className="w-full bg-gradient-to-t from-slate-800 to-slate-600 rounded-2xl h-44 mt-3 border border-slate-500/40 shadow-xl flex items-center justify-center">
+                  <span className="text-4xl font-black font-mono text-slate-400">#2</span>
+                </div>
+              </div>
+            )}
+
+            {/* 1st Place (Champion) */}
+            <div className="flex flex-col items-center scale-110">
+              <span className="text-5xl animate-bounce mb-1">👑</span>
+              <span className="text-xs font-mono font-black tracking-widest text-amber-300 uppercase bg-amber-500/20 px-3 py-0.5 rounded-full border border-amber-400/40">
+                Grand Champion
+              </span>
+              <div className="text-3xl lg:text-4xl font-black text-yellow-300 mt-1 truncate max-w-[260px] drop-shadow-[0_4px_15px_rgba(245,158,11,0.6)]">
+                {winner1.name}
+              </div>
+              <div className="text-2xl font-mono font-black text-amber-400 mt-1">{winner1.avgTotal} / 100</div>
+              <div className="w-full bg-gradient-to-t from-amber-700 via-amber-500 to-yellow-300 rounded-2xl h-60 mt-3 border border-yellow-300/60 shadow-2xl shadow-amber-500/40 flex items-center justify-center">
+                <span className="text-6xl font-black font-mono text-slate-950">#1</span>
+              </div>
+            </div>
+
+            {/* 3rd Place */}
+            {winner3 && (
+              <div className="flex flex-col items-center">
+                <span className="text-3xl mb-1">🥉</span>
+                <span className="text-xs font-mono font-bold text-amber-500 uppercase">2nd Runner Up</span>
+                <div className="text-2xl font-black text-white mt-1 truncate max-w-[200px]">{winner3.name}</div>
+                <div className="text-xl font-mono font-black text-amber-400 mt-1">{winner3.avgTotal} pts</div>
+                <div className="w-full bg-gradient-to-t from-amber-950 to-amber-800 rounded-2xl h-36 mt-3 border border-amber-700/40 shadow-xl flex items-center justify-center">
+                  <span className="text-4xl font-black font-mono text-amber-600">#3</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="relative z-10 text-xs font-mono text-slate-400">
+            Bedford Marston Kerala Association • Congratulations to all participants!
+          </div>
+        </div>
+      )}
+
+      {/* ================= NORMAL LIVE STAGE ROTATION ================= */}
       
       {/* Top Header */}
-      <header className="flex-none border-b border-slate-800/80 pb-3">
-        <div className="flex justify-between items-center text-[11px] font-semibold uppercase tracking-wider text-amber-500 mb-1.5">
+      <header className="flex-none border-b border-slate-800/80 pb-2">
+        <div className="flex justify-between items-center text-xs font-semibold uppercase tracking-wider text-amber-500 mb-1">
           <div className="flex items-center gap-2.5">
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -225,7 +308,7 @@ function ProjectorContent() {
             <span className="font-mono text-slate-300 font-bold tracking-widest">BMKA PONNONAM 2026 • ARENA</span>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2 py-1 rounded-xl shadow-inner">
+          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-xl">
             {CRITERIA.map((c, i) => (
               <button
                 key={c.key}
@@ -233,9 +316,9 @@ function ProjectorContent() {
                   switchSlide(i);
                   setIsPaused(true);
                 }}
-                className={`text-[10px] px-2.5 py-0.5 rounded-lg font-bold transition ${
+                className={`text-[10px] px-2.5 py-0.5 rounded font-bold transition ${
                   i === currentSlideIndex
-                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20 scale-105'
+                    ? 'bg-amber-500 text-black shadow'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -247,30 +330,30 @@ function ProjectorContent() {
 
             <button
               onClick={() => setIsPaused(!isPaused)}
-              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-mono"
+              className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono"
             >
-              {isPaused ? '▶ Play' : '⏸ Pause'}
+              {isPaused ? '▶' : '⏸'}
             </button>
 
             {!isPaused && (
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/30">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
                 ⏱ {secondsRemaining}s
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-4 text-slate-400 font-mono text-[11px]">
-            <span>Audience Votes: <strong className="text-white font-bold">{totalVotes}</strong></span>
+          <div className="flex items-center gap-4 text-slate-400 font-mono text-xs">
+            <span>Votes: <strong className="text-white font-bold">{totalVotes}</strong></span>
             <span>Sync: <span className="text-slate-200">{lastUpdated || '...'}</span></span>
           </div>
         </div>
 
-        {/* Malayalam & English Category Heading */}
-        <div className={`text-center transition-all duration-300 transform ${isTransitioning ? 'opacity-0 -translate-y-1' : 'opacity-100 translate-y-0'}`}>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-amber-400 tracking-wide leading-tight">
+        {/* Malayalam & English Title */}
+        <div className={`text-center transition-all duration-300 ${isTransitioning ? 'opacity-0 -translate-y-1' : 'opacity-100 translate-y-0'}`}>
+          <h1 className="text-3xl sm:text-4xl font-black text-amber-400 tracking-wide leading-tight">
             {activeCriterion.titleMl}
           </h1>
-          <p className="text-sm sm:text-base font-semibold text-slate-300 flex items-center justify-center gap-2 mt-1">
+          <p className="text-sm font-semibold text-slate-300 flex items-center justify-center gap-2 mt-0.5">
             <span>{activeCriterion.title}</span>
             <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-800 text-amber-400 border border-slate-700 font-mono font-bold">
               Max {activeCriterion.maxScore} Pts
@@ -279,61 +362,61 @@ function ProjectorContent() {
         </div>
       </header>
 
-      {/* Full-Height Bar Arena (Clean Zero-Scroll Layout) */}
-      <section className={`flex-1 flex flex-col justify-center my-4 transition-all duration-300 ease-out transform ${
+      {/* Main Full-Stage Arena: Accommodates ALL Contestants in One Screen Without Scrolling */}
+      <section className={`flex-1 flex flex-col justify-center my-2 transition-all duration-300 ${
         isTransitioning ? 'opacity-0 scale-98' : 'opacity-100 scale-100'
       }`}>
-        <div className="relative w-full max-w-6xl mx-auto h-[480px] lg:h-[540px] bg-slate-900/40 rounded-3xl border border-slate-800/80 px-8 py-6 flex flex-col justify-end shadow-2xl backdrop-blur-md">
+        <div className="relative w-full h-[520px] bg-slate-900/40 rounded-3xl border border-slate-800/80 px-4 py-4 flex flex-col justify-end shadow-2xl">
           
-          {/* Subtle Horizontal Score Guides */}
-          <div className="absolute inset-0 px-8 py-6 flex flex-col justify-between pointer-events-none opacity-15">
-            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-xs text-slate-300 font-mono font-bold">{activeCriterion.maxScore} pts</div>
-            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-xs text-slate-300 font-mono">{(activeCriterion.maxScore * 0.75).toFixed(0)} pts</div>
-            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-xs text-slate-300 font-mono">{(activeCriterion.maxScore * 0.5).toFixed(0)} pts</div>
-            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-xs text-slate-300 font-mono">{(activeCriterion.maxScore * 0.25).toFixed(0)} pts</div>
+          {/* Score Guidelines */}
+          <div className="absolute inset-0 px-6 py-5 flex flex-col justify-between pointer-events-none opacity-15">
+            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono font-bold">{activeCriterion.maxScore} pts</div>
+            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono font-bold">{(activeCriterion.maxScore * 0.75).toFixed(0)} pts</div>
+            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono font-bold">{(activeCriterion.maxScore * 0.5).toFixed(0)} pts</div>
+            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono font-bold">{(activeCriterion.maxScore * 0.25).toFixed(0)} pts</div>
             <div className="border-b border-slate-600 w-full"></div>
           </div>
 
-          {/* Rising Stage Bars with Proper Natural Sorting (#1 Chest No 1, #2 Chest No 2...) */}
-          <div className="relative z-10 flex justify-center items-end gap-6 sm:gap-12 h-full pt-4">
-            {topFive.map((c, index) => {
+          {/* Dynamic 25-Contestant Unified Grid Bars */}
+          <div className="relative z-10 flex justify-between items-end gap-1 sm:gap-2 h-full pt-8">
+            {sortedStats.map((c, index) => {
               const score = c[activeCriterion.key] as number;
-              const heightPercent = Math.max((score / activeCriterion.maxScore) * 100, 6);
+              const heightPercent = Math.max((score / activeCriterion.maxScore) * 100, 4);
 
               return (
-                <div key={c.id} className="flex flex-col items-center h-full justify-end min-w-[100px] sm:min-w-[130px] group">
+                <div key={c.id} className="flex-1 flex flex-col items-center h-full justify-end group min-w-0">
                   
-                  {/* Floating Rank & Score Tag */}
-                  <div className="mb-2 text-center transition-all duration-300 group-hover:-translate-y-1">
+                  {/* Floating Header (Crown positioned absolute so it NEVER shrinks the first bar) */}
+                  <div className="relative flex flex-col items-center mb-1.5 h-12 justify-end w-full">
                     {index === 0 && (
-                      <span className="text-2xl block animate-bounce mb-1 drop-shadow-[0_4px_10px_rgba(245,158,11,0.6)]">
+                      <span className="absolute -top-5 text-base sm:text-lg animate-bounce drop-shadow-[0_2px_8px_rgba(245,158,11,0.6)]">
                         👑
                       </span>
                     )}
-                    <div className={`font-mono font-black text-2xl lg:text-3xl tracking-tight ${activeCriterion.accentColor}`}>
+                    <span className={`font-mono font-black text-xs sm:text-sm lg:text-base leading-none ${activeCriterion.accentColor}`}>
                       {score}
-                    </div>
-                    <span className="text-xs uppercase font-mono font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                    </span>
+                    <span className="text-[9px] font-mono font-bold px-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 mt-1">
                       #{index + 1}
                     </span>
                   </div>
                   
-                  {/* Vertical Animated Bar Pillar */}
-                  <div className="w-16 sm:w-24 bg-slate-900/90 rounded-2xl p-1 flex flex-col justify-end h-full border border-slate-700/60 shadow-inner">
+                  {/* Vertical Bar (All 25 bars share identical container height) */}
+                  <div className="w-full max-w-[42px] bg-slate-900/90 rounded-xl p-0.5 flex flex-col justify-end h-[360px] border border-slate-800/80 shadow-inner">
                     <div
-                      className={`w-full rounded-xl transition-all duration-1000 shadow-xl bg-gradient-to-t ${activeCriterion.gradient}`}
+                      className={`w-full rounded-lg transition-all duration-1000 bg-gradient-to-t ${activeCriterion.gradient}`}
                       style={{ height: `${heightPercent}%` }}
                     />
                   </div>
 
                   {/* Contestant Name Label */}
-                  <div className="mt-3 text-center w-full">
-                    <div className="text-sm sm:text-base font-extrabold text-white truncate">
-                      {c.name}
+                  <div className="mt-2 text-center w-full">
+                    <div className="text-[10px] sm:text-xs font-bold text-slate-200 truncate w-full" title={c.name}>
+                      {c.name.replace(/Chest No\s*/i, '#')}
                     </div>
-                    <span className="text-[11px] text-slate-400 font-mono">
-                      Overall: {c.avgTotal}
-                    </span>
+                    <div className="text-[8px] font-mono text-slate-400 mt-0.5 hidden sm:block">
+                      T:{c.avgTotal}
+                    </div>
                   </div>
                 </div>
               );
@@ -343,8 +426,8 @@ function ProjectorContent() {
       </section>
 
       {/* Broadcast Footer */}
-      <footer className="flex-none flex justify-between items-center text-[10px] text-slate-500 font-mono pt-2 border-t border-slate-800/40">
-        <span>Bedford Marston Kerala Association • Official Stage Console</span>
+      <footer className="flex-none flex justify-between items-center text-xs text-slate-500 font-mono pt-2 border-t border-slate-800/40">
+        <span>Bedford Marston Kerala Association • Official Scrutiny Console</span>
         <span>Auto-Rotation: Main (15s) • Criteria (5s) • Press <strong>F11</strong> for Fullscreen</span>
       </footer>
     </main>
@@ -353,7 +436,7 @@ function ProjectorContent() {
 
 export default function ProjectorPage() {
   return (
-    <Suspense fallback={<div className="h-screen w-screen bg-[#050811] text-white flex items-center justify-center font-mono text-sm">Launching Stage Arena...</div>}>
+    <Suspense fallback={<div className="h-screen w-screen bg-[#040711] text-white flex items-center justify-center font-mono text-sm">Launching Stage Arena...</div>}>
       <ProjectorContent />
     </Suspense>
   );

@@ -15,6 +15,11 @@ interface GeoConfig {
   radius_meters: number;
 }
 
+function extractChestNumber(name: string): number {
+  const match = name.match(/\d+/);
+  return match ? parseInt(match[0], 10) : 999;
+}
+
 export default function Admin() {
   const [pin, setPin] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -27,6 +32,15 @@ export default function Admin() {
   const [adding, setAdding] = useState(false);
   const [statusMsg, setStatusMsg] = useState('Connecting...');
 
+  // Editing state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+
+  // Winner announcement state
+  const [winnerActive, setWinnerActive] = useState(false);
+  const [winnerToggling, setWinnerToggling] = useState(false);
+
+  // Geo config
   const [geoConfig, setGeoConfig] = useState<GeoConfig>({
     enabled: false,
     lat: 52.13597,
@@ -35,13 +49,12 @@ export default function Admin() {
   });
   const [geoSaving, setGeoSaving] = useState(false);
 
-  // Updated Admin Passcode
   const correctPin = 'Bmka2026@@';
 
   const fetchData = async () => {
     setStatusMsg('Refreshing stats...');
     try {
-      const { data: couplesData } = await supabase.from('couples').select('*').order('created_at', { ascending: true });
+      const { data: couplesData } = await supabase.from('couples').select('*');
       const { data: votesData } = await supabase.from('votes').select('*');
       
       const fortyFiveSecondsAgo = new Date(Date.now() - 45000).toISOString();
@@ -50,20 +63,30 @@ export default function Admin() {
         .select('session_id')
         .gte('last_seen', fortyFiveSecondsAgo);
 
-      const { data: settingData } = await supabase
+      const { data: geoData } = await supabase
         .from('app_settings')
         .select('value')
         .eq('key', 'geo_fence')
         .single();
 
-      if (couplesData) setCouples(couplesData);
+      const { data: winData } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'winner_announcement')
+        .single();
+
+      if (couplesData) {
+        const sorted = [...couplesData].sort((a, b) => extractChestNumber(a.name) - extractChestNumber(b.name));
+        setCouples(sorted);
+      }
       if (votesData) {
         setVotes(votesData);
         const tokens = new Set(votesData.map((v) => v.voter_token).filter(Boolean));
         setUniqueVotersCount(tokens.size);
       }
       if (activeData) setActiveUsersNow(activeData.length);
-      if (settingData?.value) setGeoConfig(settingData.value);
+      if (geoData?.value) setGeoConfig(geoData.value);
+      if (winData?.value?.active !== undefined) setWinnerActive(winData.value.active);
 
       setStatusMsg(`Connected: ${couplesData?.length || 0} contestants • ${activeData?.length || 0} online`);
     } catch (err: any) {
@@ -74,7 +97,7 @@ export default function Admin() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
-      const interval = setInterval(fetchData, 6000);
+      const interval = setInterval(fetchData, 5000);
       return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
@@ -106,10 +129,44 @@ export default function Admin() {
     fetchData();
   };
 
+  const handleStartRename = (couple: Couple) => {
+    setEditingId(couple.id);
+    setEditingName(couple.name);
+  };
+
+  const handleSaveRename = async (id: string) => {
+    if (!editingName.trim()) return;
+    const { error } = await supabase.from('couples').update({ name: editingName.trim() }).eq('id', id);
+    if (error) {
+      alert('Rename failed: ' + error.message);
+    } else {
+      setEditingId(null);
+      fetchData();
+    }
+  };
+
   const handleDeleteCouple = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to delete ${name}?`)) return;
     await supabase.from('couples').delete().eq('id', id);
     fetchData();
+  };
+
+  const handleToggleWinner = async () => {
+    const nextState = !winnerActive;
+    if (nextState && !confirm('This will pause the slideshow on the projector and trigger the WINNER ANNOUNCEMENT stage. Proceed?')) {
+      return;
+    }
+    setWinnerToggling(true);
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert([{ key: 'winner_announcement', value: { active: nextState } }]);
+    setWinnerToggling(false);
+
+    if (error) {
+      alert('Failed to update stage: ' + error.message);
+    } else {
+      setWinnerActive(nextState);
+    }
   };
 
   const handleResetVotes = async () => {
@@ -129,7 +186,7 @@ export default function Admin() {
     if (error) {
       alert('Failed to save Geo-Lock: ' + error.message);
     } else {
-      alert(`Geo-Lock settings saved (${geoConfig.enabled ? 'ACTIVE' : 'DISABLED'})!`);
+      alert(`Geo-Lock saved (${geoConfig.enabled ? 'ACTIVE' : 'DISABLED'})!`);
     }
   };
 
@@ -147,9 +204,7 @@ export default function Admin() {
         }));
         alert(`Location pinned: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`);
       },
-      (err) => {
-        alert('Could not retrieve GPS location: ' + err.message);
-      },
+      (err) => alert('GPS error: ' + err.message),
       { enableHighAccuracy: true }
     );
   };
@@ -185,7 +240,7 @@ export default function Admin() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
           <div>
             <h1 className="text-2xl font-black text-amber-500">BMKA 2026 Admin Dashboard</h1>
-            <p className="text-xs text-slate-400">Contestant Management, Live Analytics & Geofence</p>
+            <p className="text-xs text-slate-400">Contestant Management, Winner Announcement & Geo-Lock</p>
             <span className="inline-block mt-1 text-[11px] px-2.5 py-0.5 rounded bg-slate-900 text-emerald-400 font-mono border border-slate-800">
               {statusMsg}
             </span>
@@ -203,7 +258,41 @@ export default function Admin() {
           </div>
         </div>
 
-        {/* Live Analytics */}
+        {/* WINNER ANNOUNCEMENT STAGE BANNER */}
+        <div className={`p-5 rounded-2xl border transition-all flex flex-col sm:flex-row justify-between items-center gap-4 ${
+          winnerActive
+            ? 'bg-gradient-to-r from-amber-950/80 via-yellow-950/60 to-slate-900 border-amber-500 shadow-xl shadow-amber-500/20'
+            : 'bg-slate-900/90 border-slate-800'
+        }`}>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🏆</span>
+              <h2 className="text-base font-bold text-white">Stage Winner Announcement</h2>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                winnerActive ? 'bg-amber-500 text-black animate-pulse' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {winnerActive ? 'LIVE ON PROJECTOR' : 'Standby'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Pauses criteria auto-rotation and reveals the Top 3 Champions with fireworks on the big screen.
+            </p>
+          </div>
+
+          <button
+            onClick={handleToggleWinner}
+            disabled={winnerToggling}
+            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition tracking-wider uppercase shadow-lg ${
+              winnerActive
+                ? 'bg-red-600 hover:bg-red-500 text-white'
+                : 'bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950'
+            }`}
+          >
+            {winnerActive ? '⏹ Close Winner Screen' : '🎉 Announce Winner Now'}
+          </button>
+        </div>
+
+        {/* Analytics Badges */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
             <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Live Online Now</span>
@@ -222,7 +311,7 @@ export default function Admin() {
             <div className="text-2xl font-black text-amber-400 font-mono mt-1">
               {uniqueVotersCount}
             </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">Unique devices voted</span>
+            <span className="text-[10px] text-slate-500 mt-1 block">Unique audience members</span>
           </div>
 
           <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
@@ -230,7 +319,7 @@ export default function Admin() {
             <div className="text-2xl font-black text-white font-mono mt-1">
               {votes.length}
             </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">Submitted couple ratings</span>
+            <span className="text-[10px] text-slate-500 mt-1 block">Submitted couple votes</span>
           </div>
 
           <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
@@ -242,7 +331,7 @@ export default function Admin() {
           </div>
         </div>
 
-        {/* Contestants Management (Add & Remove) */}
+        {/* Contestants Management (Add, Rename, Delete) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 space-y-4">
             <h2 className="text-sm font-bold flex items-center gap-2">
@@ -251,7 +340,7 @@ export default function Admin() {
             <form onSubmit={handleAddCouple} className="space-y-3">
               <input
                 type="text"
-                placeholder="e.g. Chest No 26"
+                placeholder="e.g. Chest No 26: Name"
                 value={newCoupleName}
                 onChange={(e) => setNewCoupleName(e.target.value)}
                 className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -268,20 +357,54 @@ export default function Admin() {
 
           <div className="lg:col-span-2 bg-slate-900/90 p-5 rounded-2xl border border-slate-800">
             <div className="flex justify-between items-center mb-3">
-              <h2 className="text-sm font-bold">👥 Active Contestant Roster ({couples.length})</h2>
-              <span className="text-[10px] text-slate-400 font-mono">Click remove to delete entry</span>
+              <h2 className="text-sm font-bold">👥 Roster & Rename ({couples.length})</h2>
+              <span className="text-[10px] text-slate-400 font-mono">Tap ✏️ to rename contestant</span>
             </div>
             
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-72 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
               {couples.map((c) => (
                 <div key={c.id} className="flex justify-between items-center p-2 rounded-lg bg-slate-800/80 border border-slate-700 text-xs">
-                  <span className="truncate font-medium">{c.name}</span>
-                  <button
-                    onClick={() => handleDeleteCouple(c.id, c.name)}
-                    className="text-red-400 hover:text-red-300 text-[10px] px-1.5 py-0.5 rounded bg-red-950/40 border border-red-800/60 ml-1 flex-none"
-                  >
-                    ✕
-                  </button>
+                  {editingId === c.id ? (
+                    <div className="flex items-center gap-1.5 w-full">
+                      <input
+                        type="text"
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        className="flex-1 p-1 bg-slate-700 border border-amber-500 rounded text-xs text-white"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleSaveRename(c.id)}
+                        className="px-2 py-1 bg-emerald-600 rounded text-[10px] font-bold"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="px-2 py-1 bg-slate-700 rounded text-[10px]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="truncate font-medium flex-1">{c.name}</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleStartRename(c)}
+                          className="text-amber-400 hover:text-amber-300 text-[10px] px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600"
+                        >
+                          ✏️ Rename
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCouple(c.id, c.name)}
+                          className="text-red-400 hover:text-red-300 text-[10px] px-1.5 py-0.5 rounded bg-red-950/40 border border-red-800/60"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -293,15 +416,15 @@ export default function Admin() {
           <div className="flex justify-between items-center border-b border-slate-800 pb-3">
             <div>
               <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                <span>📍 Hall Geo-Lock Setup</span>
+                <span>📍 Venue Geo-Lock Control</span>
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
                   geoConfig.enabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'
                 }`}>
-                  {geoConfig.enabled ? 'Geo-Lock Active' : 'Disabled'}
+                  {geoConfig.enabled ? 'Active' : 'Disabled'}
                 </span>
               </h2>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Restricts voting so only people physically at the venue can submit scores.
+                Restricts voting so only people inside the hall can submit scores.
               </p>
             </div>
 
@@ -317,7 +440,7 @@ export default function Admin() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-[11px] text-slate-400 font-mono mb-1">Venue Latitude</label>
+              <label className="block text-[11px] text-slate-400 font-mono mb-1">Latitude</label>
               <input
                 type="number"
                 step="any"
@@ -327,7 +450,7 @@ export default function Admin() {
               />
             </div>
             <div>
-              <label className="block text-[11px] text-slate-400 font-mono mb-1">Venue Longitude</label>
+              <label className="block text-[11px] text-slate-400 font-mono mb-1">Longitude</label>
               <input
                 type="number"
                 step="any"
@@ -337,7 +460,7 @@ export default function Admin() {
               />
             </div>
             <div>
-              <label className="block text-[11px] text-slate-400 font-mono mb-1">Allowed Radius</label>
+              <label className="block text-[11px] text-slate-400 font-mono mb-1">Radius</label>
               <select
                 value={geoConfig.radius_meters}
                 onChange={(e) => setGeoConfig({ ...geoConfig, radius_meters: parseInt(e.target.value) || 500 })}
@@ -346,7 +469,6 @@ export default function Admin() {
                 <option value={200}>200m (Single Hall)</option>
                 <option value={500}>500m (Hall + Parking)</option>
                 <option value={1000}>1,000m (1 KM Vicinity)</option>
-                <option value={2500}>2,500m (Bedford Local Area)</option>
               </select>
             </div>
           </div>
