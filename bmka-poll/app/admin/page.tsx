@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabase';
 
@@ -69,6 +69,9 @@ export default function Admin() {
     radius_meters: 500
   });
   const [geoSaving, setGeoSaving] = useState(false);
+  
+  // Guard against background overwrite
+  const geoInitialised = useRef(false);
 
   // Copy notification banner
   const [copyFeedback, setCopyFeedback] = useState('');
@@ -124,14 +127,18 @@ export default function Admin() {
         setUniqueVotersCount(tokens.size);
       }
       if (activeData) setActiveUsersNow(activeData.length);
-      if (geoData?.value) {
+
+      // Only populate geo config on first load, so background interval never overrides user input
+      if (geoData?.value && !geoInitialised.current) {
         setGeoConfig({
           enabled: Boolean(geoData.value.enabled),
           lat: typeof geoData.value.lat === 'number' ? geoData.value.lat : 52.13597,
           lng: typeof geoData.value.lng === 'number' ? geoData.value.lng : -0.46665,
           radius_meters: typeof geoData.value.radius_meters === 'number' ? geoData.value.radius_meters : 500
         });
+        geoInitialised.current = true;
       }
+
       if (winData?.value?.active !== undefined) setWinnerActive(winData.value.active);
       if (modeData?.value?.mode) setProjectorMode(modeData.value.mode);
 
@@ -327,7 +334,7 @@ export default function Admin() {
     setGeoSaving(false);
     if (error) {
       alert('Failed to update Geo-Lock status: ' + error.message);
-      setGeoConfig(geoConfig); // revert on failure
+      setGeoConfig(geoConfig);
     } else {
       alert(`Geo-Lock is now ${nextEnabled ? 'ACTIVE (Restricting access)' : 'DISABLED (Public access allowed)'}!`);
     }
@@ -351,10 +358,11 @@ export default function Admin() {
     if (error) {
       alert('Failed to save Geo-Lock: ' + error.message);
     } else {
-      alert(`Geo-Lock coordinates and radius saved successfully! (${payload.enabled ? 'ACTIVE' : 'DISABLED'})`);
+      alert(`Geo-Lock saved successfully! Lat: ${payload.lat}, Lng: ${payload.lng}, Radius: ${payload.radius_meters}m (${payload.enabled ? 'ACTIVE' : 'DISABLED'})`);
     }
   };
 
+  // Manual GPS location detection button
   const handleDetectCurrentLocation = () => {
     if (!navigator.geolocation) {
       alert('Geolocation is not supported by this browser.');
@@ -369,7 +377,7 @@ export default function Admin() {
           lat: newLat,
           lng: newLng
         }));
-        alert(`Location acquired: Lat ${newLat}, Lng ${newLng}. Click "Save Geo-Lock Settings" to apply.`);
+        alert(`Acquired GPS: Lat ${newLat}, Lng ${newLng}. Click "Save Geo-Lock Settings" to apply.`);
       },
       (err) => alert('GPS error: ' + err.message),
       { enableHighAccuracy: true, timeout: 10000 }
@@ -693,7 +701,7 @@ export default function Admin() {
                 type="number"
                 step="any"
                 value={geoConfig.lat}
-                onChange={(e) => setGeoConfig({ ...geoConfig, lat: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => setGeoConfig((prev) => ({ ...prev, lat: parseFloat(e.target.value) || 0 }))}
                 className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
@@ -703,7 +711,7 @@ export default function Admin() {
                 type="number"
                 step="any"
                 value={geoConfig.lng}
-                onChange={(e) => setGeoConfig({ ...geoConfig, lng: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => setGeoConfig((prev) => ({ ...prev, lng: parseFloat(e.target.value) || 0 }))}
                 className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
@@ -711,7 +719,7 @@ export default function Admin() {
               <label className="block text-[11px] text-slate-400 font-mono mb-1">Allowed Radius</label>
               <select
                 value={geoConfig.radius_meters}
-                onChange={(e) => setGeoConfig({ ...geoConfig, radius_meters: parseInt(e.target.value) || 500 })}
+                onChange={(e) => setGeoConfig((prev) => ({ ...prev, radius_meters: parseInt(e.target.value) || 500 }))}
                 className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               >
                 <option value={200}>200m (Single Event Hall)</option>
