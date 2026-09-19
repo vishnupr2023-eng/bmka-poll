@@ -23,10 +23,10 @@ interface CriterionConfig {
 const CRITERIA: CriterionConfig[] = [
   {
     key: 'total',
-    title: 'Overall Championship Leaderboard',
-    titleMl: 'ആകെ സ്കോർ ലീഡർബോർഡ്',
+    title: 'Total Score',
+    titleMl: 'ആകെ സ്കോർ',
     maxScore: 100,
-    gradient: 'from-amber-600 via-amber-500 to-yellow-300',
+    gradient: 'from-amber-600 via-orange-500 to-amber-300',
     accentColor: 'text-amber-400',
     durationSeconds: 15
   },
@@ -41,7 +41,7 @@ const CRITERIA: CriterionConfig[] = [
   },
   {
     key: 'essence',
-    title: 'Kerala Ethnic Essence',
+    title: 'Ethnic Essence',
     titleMl: 'കേരളത്തനിമ',
     maxScore: 20,
     gradient: 'from-emerald-600 via-teal-400 to-emerald-200',
@@ -50,8 +50,8 @@ const CRITERIA: CriterionConfig[] = [
   },
   {
     key: 'walk',
-    title: 'Walk & Stage Presence',
-    titleMl: 'വേദിയിലെ നടനവും പ്രൗഢിയും',
+    title: 'Walk & Presence',
+    titleMl: 'നടനം & പ്രൗഢി',
     maxScore: 20,
     gradient: 'from-blue-600 via-cyan-500 to-sky-300',
     accentColor: 'text-cyan-400',
@@ -59,8 +59,8 @@ const CRITERIA: CriterionConfig[] = [
   },
   {
     key: 'chemistry',
-    title: 'Togetherness & Chemistry',
-    titleMl: 'ഒരുമയും പൊരുത്തവും',
+    title: 'Chemistry',
+    titleMl: 'ഒരുമ & പൊരുത്തം',
     maxScore: 20,
     gradient: 'from-purple-600 via-fuchsia-500 to-pink-300',
     accentColor: 'text-fuchsia-400',
@@ -69,7 +69,7 @@ const CRITERIA: CriterionConfig[] = [
   {
     key: 'confidence',
     title: 'Confidence & Impact',
-    titleMl: 'ആത്മവിശ്വാസവും പ്രകടനവും',
+    titleMl: 'ആത്മവിശ്വാസം',
     maxScore: 15,
     gradient: 'from-amber-500 via-yellow-400 to-lime-300',
     accentColor: 'text-yellow-400',
@@ -243,7 +243,7 @@ function ProjectorContent() {
     return () => clearInterval(timer);
   }, [session]);
 
-  // Slideshow auto-rotation for "All Contestants" mode (15s main, 5s criteria)
+  // Slideshow auto-rotation for "All Contestants" mode
   const switchSlide = (nextIndex: number) => {
     setIsTransitioning(true);
     setTimeout(() => {
@@ -278,17 +278,14 @@ function ProjectorContent() {
     );
   }
 
-  // Active criterion in "All Contestants" mode
   const activeCriterion = CRITERIA[currentSlideIndex];
 
-  // Natural numeric sort by active criterion score (chest number tie-breaker)
   const sortedAllData = [...allCouplesData].sort((a, b) => {
     const diff = (b[activeCriterion.key] as number) - (a[activeCriterion.key] as number);
     if (diff !== 0) return diff;
     return a.chestNumber - b.chestNumber;
   });
 
-  // Top 3 champions for Winner Announcement
   const championshipLeaderboard = [...allCouplesData].sort((a, b) => {
     const diff = b.total - a.total;
     if (diff !== 0) return diff;
@@ -306,45 +303,45 @@ function ProjectorContent() {
   const strokeDashoffset = 440 - 440 * timerFraction;
 
   return (
-    <main className="h-screen w-screen bg-[#03060f] text-white flex flex-col justify-between overflow-hidden select-none p-4 lg:p-6 font-sans relative">
+    <main className="h-screen w-screen bg-[#03060f] text-white flex flex-col justify-between overflow-hidden select-none p-3 lg:p-5 font-sans relative">
       
       {/* ================= WINNER OVERLAY ================= */}
       {winnerActive && championshipLeaderboard.length > 0 && (
-        <div className="absolute inset-0 z-50 bg-[#02050e]/95 backdrop-blur-xl flex flex-col justify-between p-8 text-center animate-fadeIn">
+        <div className="absolute inset-0 z-50 bg-[#02050e]/95 backdrop-blur-xl flex flex-col justify-between p-6 text-center">
           <div className="relative z-10 pt-2">
             <span className="text-xs uppercase tracking-widest font-mono text-amber-400 bg-amber-500/10 px-4 py-1.5 rounded-full border border-amber-500/30">
               BMKA Kerala Thanima 2026 • Official Championship Result
             </span>
-            <h1 className="text-4xl lg:text-6xl font-black bg-gradient-to-r from-yellow-200 via-amber-400 to-orange-400 bg-clip-text text-transparent mt-3">
+            <h1 className="text-3xl lg:text-5xl font-black bg-gradient-to-r from-yellow-200 via-amber-400 to-orange-400 bg-clip-text text-transparent mt-2">
               വിജയികൾ / The Champions
             </h1>
           </div>
 
-          <div className="relative z-10 max-w-5xl mx-auto w-full grid grid-cols-3 gap-6 items-end my-auto pt-6">
+          <div className="relative z-10 max-w-4xl mx-auto w-full grid grid-cols-3 gap-6 items-end my-auto">
             {championshipLeaderboard[1] && (
               <div className="flex flex-col items-center">
                 <span className="text-3xl mb-1">🥈</span>
                 <span className="text-xs font-mono font-bold text-slate-300 uppercase">1st Runner Up</span>
-                <div className="text-2xl font-black text-white mt-1 truncate max-w-[200px]">{championshipLeaderboard[1].name}</div>
-                <div className="text-xl font-mono font-black text-slate-300 mt-1">{championshipLeaderboard[1].total} pts</div>
-                <div className="w-full bg-gradient-to-t from-slate-800 to-slate-600 rounded-2xl h-44 mt-3 border border-slate-500/40 shadow-xl flex items-center justify-center">
-                  <span className="text-4xl font-black font-mono text-slate-400">#2</span>
+                <div className="text-xl lg:text-2xl font-black text-white mt-1 truncate max-w-[200px]">{championshipLeaderboard[1].name}</div>
+                <div className="text-lg lg:text-xl font-mono font-black text-slate-300 mt-1">{championshipLeaderboard[1].total} pts</div>
+                <div className="w-full bg-gradient-to-t from-slate-800 to-slate-600 rounded-2xl h-36 lg:h-44 mt-2 border border-slate-500/40 shadow-xl flex items-center justify-center">
+                  <span className="text-3xl lg:text-4xl font-black font-mono text-slate-400">#2</span>
                 </div>
               </div>
             )}
 
             {championshipLeaderboard[0] && (
-              <div className="flex flex-col items-center scale-110">
-                <span className="text-5xl animate-bounce mb-1">👑</span>
+              <div className="flex flex-col items-center scale-105">
+                <span className="text-4xl lg:text-5xl animate-bounce mb-1">👑</span>
                 <span className="text-xs font-mono font-black tracking-widest text-amber-300 uppercase bg-amber-500/20 px-3 py-0.5 rounded-full border border-amber-400/40">
                   Grand Champion
                 </span>
-                <div className="text-3xl lg:text-4xl font-black text-yellow-300 mt-1 truncate max-w-[260px] drop-shadow-[0_4px_15px_rgba(245,158,11,0.6)]">
+                <div className="text-2xl lg:text-3xl font-black text-yellow-300 mt-1 truncate max-w-[240px]">
                   {championshipLeaderboard[0].name}
                 </div>
-                <div className="text-2xl font-mono font-black text-amber-400 mt-1">{championshipLeaderboard[0].total} / 100</div>
-                <div className="w-full bg-gradient-to-t from-amber-700 via-amber-500 to-yellow-300 rounded-2xl h-60 mt-3 border border-yellow-300/60 shadow-2xl shadow-amber-500/40 flex items-center justify-center">
-                  <span className="text-6xl font-black font-mono text-slate-950">#1</span>
+                <div className="text-xl lg:text-2xl font-mono font-black text-amber-400 mt-1">{championshipLeaderboard[0].total} / 100</div>
+                <div className="w-full bg-gradient-to-t from-amber-700 via-amber-500 to-yellow-300 rounded-2xl h-48 lg:h-56 mt-2 border border-yellow-300/60 shadow-2xl flex items-center justify-center">
+                  <span className="text-5xl lg:text-6xl font-black font-mono text-slate-950">#1</span>
                 </div>
               </div>
             )}
@@ -353,10 +350,10 @@ function ProjectorContent() {
               <div className="flex flex-col items-center">
                 <span className="text-3xl mb-1">🥉</span>
                 <span className="text-xs font-mono font-bold text-amber-500 uppercase">2nd Runner Up</span>
-                <div className="text-2xl font-black text-white mt-1 truncate max-w-[200px]">{championshipLeaderboard[2].name}</div>
-                <div className="text-xl font-mono font-black text-amber-400 mt-1">{championshipLeaderboard[2].total} pts</div>
-                <div className="w-full bg-gradient-to-t from-amber-950 to-amber-800 rounded-2xl h-36 mt-3 border border-amber-700/40 shadow-xl flex items-center justify-center">
-                  <span className="text-4xl font-black font-mono text-amber-600">#3</span>
+                <div className="text-xl lg:text-2xl font-black text-white mt-1 truncate max-w-[200px]">{championshipLeaderboard[2].name}</div>
+                <div className="text-lg lg:text-xl font-mono font-black text-amber-400 mt-1">{championshipLeaderboard[2].total} pts</div>
+                <div className="w-full bg-gradient-to-t from-amber-950 to-amber-800 rounded-2xl h-28 lg:h-36 mt-2 border border-amber-700/40 shadow-xl flex items-center justify-center">
+                  <span className="text-3xl lg:text-4xl font-black font-mono text-amber-600">#3</span>
                 </div>
               </div>
             )}
@@ -369,13 +366,13 @@ function ProjectorContent() {
       )}
 
       {/* ================= TOP STAGE HEADER ================= */}
-      <header className="flex-none border-b border-slate-800/80 pb-2.5 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <span className="relative flex h-3 w-3">
+      <header className="flex-none border-b border-slate-800/80 pb-2 flex justify-between items-center">
+        <div className="flex items-center gap-2.5">
+          <span className="relative flex h-2.5 w-2.5">
             <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${session.status === 'voting' ? 'bg-emerald-400' : 'bg-amber-400'} opacity-75`}></span>
-            <span className={`relative inline-flex rounded-full h-3 w-3 ${session.status === 'voting' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+            <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${session.status === 'voting' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
           </span>
-          <span className="text-xs font-mono font-black text-amber-500 tracking-widest uppercase">
+          <span className="text-[11px] font-mono font-black text-amber-500 tracking-widest uppercase">
             BMKA PONNONAM 2026 • ARENA
           </span>
         </div>
@@ -384,46 +381,46 @@ function ProjectorContent() {
         <div className="text-center">
           {displayMode === 'live' ? (
             <div>
-              <span className="text-[10px] font-mono text-amber-500 uppercase tracking-wider block">Live Stage Contestant</span>
-              <h1 className="text-xl sm:text-2xl font-black text-white">{currentCoupleName}</h1>
+              <span className="text-[9px] font-mono text-amber-500 uppercase tracking-widest block font-bold">LIVE STAGE CONTESTANT</span>
+              <h1 className="text-lg sm:text-2xl font-black text-white leading-none mt-0.5">{currentCoupleName}</h1>
             </div>
           ) : (
             <div className={`transition-all duration-300 ${isTransitioning ? 'opacity-0 -translate-y-1' : 'opacity-100 translate-y-0'}`}>
-              <h1 className="text-2xl sm:text-3xl font-black text-amber-400 tracking-wide leading-tight">
+              <h1 className="text-xl sm:text-2xl font-black text-amber-400 tracking-wide leading-tight">
                 {activeCriterion.titleMl}
               </h1>
-              <p className="text-xs sm:text-sm font-semibold text-slate-300 flex items-center justify-center gap-2">
+              <p className="text-[11px] font-semibold text-slate-300 flex items-center justify-center gap-2">
                 <span>{activeCriterion.title}</span>
-                <span className="text-[10px] px-2 py-0.2 rounded-full bg-slate-800 text-amber-400 border border-slate-700 font-mono font-bold">
+                <span className="text-[9px] px-2 py-0.2 rounded-full bg-slate-800 text-amber-400 border border-slate-700 font-mono font-bold">
                   Scale: 0 – {activeCriterion.maxScore} Pts
                 </span>
-                <span className="text-[10px] font-mono text-amber-300/80">⏱ {slideSecondsRemaining}s</span>
+                <span className="text-[9px] font-mono text-amber-300/80">⏱ {slideSecondsRemaining}s</span>
               </p>
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl">
-          <div className="text-right font-mono text-[11px]">
+        <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1 rounded-xl">
+          <div className="text-right font-mono text-[10px]">
             <span className="text-slate-400">Total Ballots Cast: </span>
-            <strong className="text-emerald-400 text-sm">{totalBallots}</strong>
+            <strong className="text-emerald-400 text-xs">{totalBallots}</strong>
           </div>
         </div>
       </header>
 
       {/* ================= VIEW 1: LIVE SINGLE CONTESTANT WITH GOLD TIMER ================= */}
       {displayMode === 'live' && (
-        <div className="flex-1 flex gap-6 my-3 items-stretch overflow-hidden">
+        <div className="flex-1 flex gap-4 my-2.5 items-stretch min-h-0 overflow-hidden">
           
           {/* Left Quarter: 60s Gold Animated Timer */}
-          <div className="w-[28%] bg-gradient-to-b from-slate-900/90 via-slate-950 to-slate-900/90 rounded-3xl border-2 border-amber-500/60 p-5 flex flex-col justify-between items-center shadow-2xl relative">
-            <div className="text-center">
-              <span className="text-[11px] font-mono font-extrabold uppercase tracking-widest text-amber-400 bg-amber-500/10 px-3 py-0.5 rounded-full border border-amber-500/30">
+          <div className="w-[28%] max-w-[320px] bg-gradient-to-b from-slate-900/90 via-slate-950 to-slate-900/90 rounded-2xl border-2 border-amber-500/60 p-4 flex flex-col justify-between items-center shadow-2xl relative min-h-0">
+            <div className="text-center flex-none">
+              <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-amber-400 bg-amber-500/10 px-3 py-0.5 rounded-full border border-amber-500/30">
                 Official Voting Window
               </span>
             </div>
 
-            <div className="relative w-52 h-52 lg:w-60 lg:h-60 flex items-center justify-center my-auto">
+            <div className="relative w-40 h-40 sm:w-48 sm:h-48 lg:w-56 lg:h-56 flex items-center justify-center my-auto flex-none">
               <svg className="w-full h-full transform -rotate-90" viewBox="0 0 160 160">
                 <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="8" className="text-slate-800" fill="transparent" />
                 <circle
@@ -446,77 +443,80 @@ function ProjectorContent() {
               </svg>
 
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className={`text-6xl font-black font-mono tracking-tighter ${
+                <span className={`text-5xl lg:text-6xl font-black font-mono tracking-tighter ${
                   timeLeft <= 10 ? 'text-red-500 animate-ping' : 'text-yellow-300 drop-shadow-[0_2px_15px_rgba(245,158,11,0.7)]'
                 }`}>
                   {timeLeft}
                 </span>
-                <span className="text-[11px] font-mono font-bold uppercase tracking-widest text-slate-400 mt-1">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-400 mt-0.5">
                   Seconds
                 </span>
               </div>
             </div>
 
-            <div className="w-full text-center">
+            <div className="w-full text-center flex-none">
               {session.status === 'voting' ? (
-                <div className="p-2.5 bg-emerald-950/40 border border-emerald-600/60 rounded-2xl text-emerald-300 text-xs font-bold animate-pulse">
+                <div className="p-2 bg-emerald-950/40 border border-emerald-600/60 rounded-xl text-emerald-300 text-[11px] font-bold animate-pulse">
                   🟢 Live Voting Open • Submit on Phone
                 </div>
               ) : session.status === 'completed' ? (
-                <div className="p-2.5 bg-red-950/60 border border-red-600/80 rounded-2xl text-red-300 text-xs font-black tracking-wider uppercase">
+                <div className="p-2 bg-red-950/60 border border-red-600/80 rounded-xl text-red-300 text-[11px] font-black tracking-wider uppercase">
                   🔒 Voting Closed • Final Scores
                 </div>
               ) : (
-                <div className="p-2.5 bg-slate-800 rounded-2xl text-slate-400 text-xs font-mono">
+                <div className="p-2 bg-slate-800 rounded-xl text-slate-400 text-[11px] font-mono">
                   ⏳ Waiting for Admin to Start
                 </div>
               )}
             </div>
           </div>
 
-          {/* Right 3/4: Current Contestant Scores Arena */}
-          <div className="flex-1 bg-slate-900/40 rounded-3xl border border-slate-800/80 p-5 flex flex-col justify-between shadow-2xl relative">
-            <div className="flex justify-between items-center border-b border-slate-800/80 pb-2.5">
+          {/* Right 3/4: Current Contestant Scores Arena (Strict 6-column grid with equal gaps) */}
+          <div className="flex-1 bg-slate-900/40 rounded-2xl border border-slate-800/80 p-4 flex flex-col justify-between shadow-2xl relative min-h-0 overflow-hidden">
+            <div className="flex justify-between items-center border-b border-slate-800/80 pb-2 flex-none">
               <div>
-                <span className="text-[10px] font-mono text-amber-500 uppercase tracking-wider block">Currently Performing</span>
-                <h2 className="text-2xl font-black text-white">{currentCoupleName}</h2>
+                <span className="text-[9px] font-mono text-amber-500 uppercase tracking-wider block font-bold">CURRENTLY PERFORMING</span>
+                <h2 className="text-xl lg:text-2xl font-black text-white">{currentCoupleName}</h2>
               </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400 font-mono">Cumulative Average</span>
-                <div className="text-2xl font-black font-mono text-amber-400">
-                  {getSingleAvg('total')} <span className="text-xs font-normal text-slate-400">/ 100</span>
-                </div>
+              <div className="text-right font-mono text-[10px]">
+                <span className="text-slate-400">Audience Ballots: </span>
+                <strong className="text-emerald-400 text-sm">{voteCount}</strong>
               </div>
             </div>
 
-            <div className="flex-1 flex justify-between items-end gap-5 pt-6 pb-2 px-3">
+            {/* Strict 6-Column Grid Layout with IDENTICAL Gaps and Proportional Heights */}
+            <div className="flex-1 grid grid-cols-6 gap-3 sm:gap-4 lg:gap-6 items-end pt-3 pb-1 px-2 min-h-0">
               {CRITERIA.map((criterion) => {
                 const currentScore = getSingleAvg(criterion.key);
-                const heightPercent = Math.max((currentScore / criterion.maxScore) * 100, 6);
+                const heightPercent = Math.max((currentScore / criterion.maxScore) * 100, 4);
 
                 return (
-                  <div key={criterion.key} className="flex-1 flex flex-col items-center h-full justify-end group">
-                    <div className="mb-2 text-center">
-                      <div className={`font-mono font-black text-lg lg:text-2xl ${criterion.accentColor}`}>
+                  <div key={criterion.key} className="flex flex-col items-center h-full justify-end min-h-0">
+                    
+                    {/* Score Tag */}
+                    <div className="mb-1 text-center flex-none">
+                      <div className={`font-mono font-black text-base lg:text-xl leading-none ${criterion.accentColor}`}>
                         {currentScore}
                       </div>
                       <span className="text-[9px] font-mono text-slate-400 uppercase font-bold">
-                        /{criterion.maxScore} pts
+                        /{criterion.maxScore}
                       </span>
                     </div>
 
-                    <div className="w-full max-w-[65px] bg-slate-900/90 rounded-2xl p-1 flex flex-col justify-end h-[310px] border border-slate-700/60 shadow-inner">
+                    {/* Bar Pillar */}
+                    <div className="w-full max-w-[56px] bg-slate-900/90 rounded-xl p-0.5 flex flex-col justify-end flex-1 min-h-0 border border-slate-700/60 shadow-inner">
                       <div
-                        className={`w-full rounded-xl transition-all duration-700 bg-gradient-to-t ${criterion.gradient} shadow-lg`}
+                        className={`w-full rounded-lg transition-all duration-700 bg-gradient-to-t ${criterion.gradient} shadow-lg`}
                         style={{ height: `${heightPercent}%` }}
                       />
                     </div>
 
-                    <div className="mt-2 text-center w-full">
-                      <div className="text-xs lg:text-sm font-black text-amber-300 truncate">
+                    {/* Bottom Labels (Strictly contained, no overflow) */}
+                    <div className="mt-1.5 text-center w-full flex-none">
+                      <div className="text-[10px] sm:text-xs font-black text-amber-300 truncate w-full" title={criterion.titleMl}>
                         {criterion.titleMl}
                       </div>
-                      <div className="text-[10px] font-medium text-slate-300 truncate">
+                      <div className="text-[8px] sm:text-[9px] font-medium text-slate-300 truncate w-full" title={criterion.title}>
                         {criterion.title}
                       </div>
                     </div>
@@ -524,71 +524,66 @@ function ProjectorContent() {
                 );
               })}
             </div>
-
-            <div className="border-t border-slate-800/80 pt-2 flex justify-between text-[10px] font-mono text-slate-500">
-              <span>Votes received for this contestant: <strong className="text-white">{voteCount}</strong></span>
-              <span>Outfit (25) • Essence (20) • Walk (20) • Chem (20) • Impact (15)</span>
-            </div>
           </div>
 
         </div>
       )}
 
-      {/* ================= VIEW 2: ALL CONTESTANTS (NO ROSTER GRID - PURE VERTICAL BAR CHART ARENA) ================= */}
+      {/* ================= VIEW 2: ALL CONTESTANTS (FULL ARENA) ================= */}
       {displayMode === 'all' && (
-        <section className={`flex-1 flex flex-col justify-center my-3 transition-all duration-300 ${
+        <section className={`flex-1 flex flex-col justify-center my-2.5 transition-all duration-300 min-h-0 overflow-hidden ${
           isTransitioning ? 'opacity-0 scale-98' : 'opacity-100 scale-100'
         }`}>
-          <div className="relative w-full h-[540px] bg-slate-900/40 rounded-3xl border border-slate-800/80 px-6 py-5 flex flex-col justify-end shadow-2xl">
+          <div className="relative w-full h-full bg-slate-900/40 rounded-2xl border border-slate-800/80 px-4 py-3 flex flex-col justify-end shadow-2xl min-h-0">
             
             {/* Background Score Guideline Marks */}
-            <div className="absolute inset-0 px-8 py-5 flex flex-col justify-between pointer-events-none opacity-15">
-              <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono font-bold">{activeCriterion.maxScore} pts</div>
-              <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono font-bold">{(activeCriterion.maxScore * 0.75).toFixed(0)} pts</div>
-              <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono font-bold">{(activeCriterion.maxScore * 0.5).toFixed(0)} pts</div>
-              <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono font-bold">{(activeCriterion.maxScore * 0.25).toFixed(0)} pts</div>
+            <div className="absolute inset-0 px-6 py-4 flex flex-col justify-between pointer-events-none opacity-15">
+              <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[9px] text-slate-300 font-mono font-bold">{activeCriterion.maxScore} pts</div>
+              <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[9px] text-slate-300 font-mono font-bold">{(activeCriterion.maxScore * 0.75).toFixed(0)} pts</div>
+              <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[9px] text-slate-300 font-mono font-bold">{(activeCriterion.maxScore * 0.5).toFixed(0)} pts</div>
+              <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[9px] text-slate-300 font-mono font-bold">{(activeCriterion.maxScore * 0.25).toFixed(0)} pts</div>
               <div className="border-b border-slate-600 w-full"></div>
             </div>
 
-            {/* Dynamic Unified Bar Arena for ALL Contestants in One Screen (No Roster) */}
-            <div className="relative z-10 flex justify-between items-end gap-1 sm:gap-2 h-full pt-10">
+            {/* Dynamic Unified Bar Arena for ALL Contestants (No Roster) */}
+            <div className="relative z-10 flex justify-between items-end gap-1 sm:gap-2 h-full pt-6 min-h-0">
               {sortedAllData.map((c, index) => {
                 const score = c[activeCriterion.key] as number;
                 const heightPercent = Math.max((score / activeCriterion.maxScore) * 100, 4);
 
                 return (
-                  <div key={c.id} className="flex-1 flex flex-col items-center h-full justify-end group min-w-0">
+                  <div key={c.id} className="flex-1 flex flex-col items-center h-full justify-end group min-w-0 min-h-0">
                     
-                    {/* Floating Header: Crown is ABSOLUTE, so bar container height is 100% UNIFORM */}
-                    <div className="relative flex flex-col items-center mb-1.5 h-12 justify-end w-full">
+                    {/* Floating Header */}
+                    <div className="relative flex flex-col items-center mb-1 h-9 justify-end w-full flex-none">
                       {index === 0 && (
-                        <span className="absolute -top-5 text-base sm:text-lg animate-bounce drop-shadow-[0_2px_8px_rgba(245,158,11,0.6)]">
+                        <span className="absolute -top-4 text-sm animate-bounce drop-shadow-[0_2px_8px_rgba(245,158,11,0.6)]">
                           👑
                         </span>
                       )}
-                      <span className={`font-mono font-black text-xs sm:text-sm lg:text-base leading-none ${activeCriterion.accentColor}`}>
+                      <span className={`font-mono font-black text-xs sm:text-sm leading-none ${activeCriterion.accentColor}`}>
                         {score}
                       </span>
-                      <span className="text-[9px] font-mono font-bold px-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 mt-1">
+                      <span className="text-[8px] font-mono font-bold px-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 mt-0.5">
                         #{index + 1}
                       </span>
                     </div>
                     
-                    {/* Vertical Bar: All containers share identical height */}
-                    <div className="w-full max-w-[42px] bg-slate-900/90 rounded-xl p-0.5 flex flex-col justify-end h-[370px] border border-slate-800/80 shadow-inner">
+                    {/* Vertical Bar */}
+                    <div className="w-full max-w-[38px] bg-slate-900/90 rounded-lg p-0.5 flex flex-col justify-end flex-1 min-h-0 border border-slate-800/80 shadow-inner">
                       <div
-                        className={`w-full rounded-lg transition-all duration-1000 bg-gradient-to-t ${activeCriterion.gradient}`}
+                        className={`w-full rounded-md transition-all duration-1000 bg-gradient-to-t ${activeCriterion.gradient}`}
                         style={{ height: `${heightPercent}%` }}
                       />
                     </div>
 
                     {/* Contestant Name Label */}
-                    <div className="mt-2 text-center w-full">
-                      <div className="text-[10px] sm:text-xs font-bold text-slate-200 truncate w-full" title={c.name}>
+                    <div className="mt-1.5 text-center w-full flex-none">
+                      <div className="text-[9px] sm:text-[10px] font-bold text-slate-200 truncate w-full" title={c.name}>
                         {c.name.replace(/Chest No\s*/i, '#')}
                       </div>
-                      <div className="text-[8px] font-mono text-slate-400 mt-0.5 hidden sm:block">
-                        Overall: {c.total}
+                      <div className="text-[7px] font-mono text-slate-400 mt-0.5 hidden sm:block">
+                        Tot: {c.total}
                       </div>
                     </div>
                   </div>
@@ -600,7 +595,7 @@ function ProjectorContent() {
       )}
 
       {/* Broadcast Footer */}
-      <footer className="flex-none flex justify-between items-center text-[10px] text-slate-500 font-mono pt-2 border-t border-slate-800/40">
+      <footer className="flex-none flex justify-between items-center text-[10px] text-slate-500 font-mono pt-1.5 border-t border-slate-800/40">
         <span>Bedford Marston Kerala Association • Official Scrutiny Console</span>
         <span>Controlled via Admin Console • Press <strong>F11</strong> for Stage Fullscreen</span>
       </footer>
