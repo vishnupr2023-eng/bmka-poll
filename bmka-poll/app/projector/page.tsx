@@ -160,7 +160,7 @@ function ProjectorContent() {
       setCurrentSlideIndex(nextIndex);
       setSecondsRemaining(CRITERIA[nextIndex].durationSeconds);
       setIsTransitioning(false);
-    }, 300);
+    }, 280);
   };
 
   useEffect(() => {
@@ -197,20 +197,20 @@ function ProjectorContent() {
   const topFive = sortedStats.slice(0, 5);
 
   return (
-    <main className="h-screen w-screen bg-[#070b14] text-white flex flex-col justify-between overflow-hidden select-none p-4 lg:p-6 font-sans">
+    <main className="h-screen w-screen bg-[#050811] text-white flex flex-col justify-between overflow-hidden select-none p-3 lg:p-4 font-sans">
       
       {/* Top Header */}
       <header className="flex-none border-b border-slate-800/80 pb-2">
-        <div className="flex justify-between items-center text-[11px] font-semibold uppercase tracking-wider text-amber-500 mb-1">
+        <div className="flex justify-between items-center text-[10px] font-semibold uppercase tracking-wider text-amber-500 mb-1">
           <div className="flex items-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
+            <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span className="font-mono text-slate-300 font-bold tracking-widest">BMKA PONNONAM 2026 • LIVE ARENA</span>
+            <span className="font-mono text-slate-300 font-bold tracking-widest">BMKA PONNONAM 2026 • ARENA</span>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 px-2 py-1 rounded-xl">
+          <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-lg">
             {CRITERIA.map((c, i) => (
               <button
                 key={c.key}
@@ -218,93 +218,90 @@ function ProjectorContent() {
                   switchSlide(i);
                   setIsPaused(true);
                 }}
-                className={`text-[10px] px-2.5 py-0.5 rounded-lg font-bold transition-all ${
+                className={`text-[9px] px-2 py-0.5 rounded font-bold transition ${
                   i === currentSlideIndex
-                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
+                    ? 'bg-amber-500 text-black shadow'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                {i === 0 ? 'Leaderboard' : `C${i}`}
+                {i === 0 ? 'Main' : `C${i}`}
               </button>
             ))}
 
-            <div className="h-3 w-[1px] bg-slate-700 mx-1"></div>
+            <div className="h-2.5 w-[1px] bg-slate-700 mx-1"></div>
 
             <button
               onClick={() => setIsPaused(!isPaused)}
-              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 font-mono"
+              className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono"
             >
-              {isPaused ? '▶ Play' : '⏸ Pause'}
+              {isPaused ? '▶' : '⏸'}
             </button>
 
             {!isPaused && (
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/30">
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
                 ⏱ {secondsRemaining}s
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-3 text-slate-400 font-mono text-[11px]">
-            <span>Audience Votes: <strong className="text-white font-bold">{totalVotes}</strong></span>
+          <div className="flex items-center gap-3 text-slate-400 font-mono text-[10px]">
+            <span>Votes: <strong className="text-white font-bold">{totalVotes}</strong></span>
             <span>Sync: <span className="text-slate-200">{lastUpdated || '...'}</span></span>
           </div>
         </div>
 
         {/* Malayalam Title */}
         <div className={`text-center transition-all duration-300 ${isTransitioning ? 'opacity-0 -translate-y-1' : 'opacity-100 translate-y-0'}`}>
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-amber-400 tracking-wide">
+          <h1 className="text-xl sm:text-2xl font-black text-amber-400 tracking-wide leading-tight">
             {activeCriterion.titleMl}
           </h1>
-          <p className="text-xs sm:text-sm font-semibold text-slate-300 flex items-center justify-center gap-2 mt-0.5">
+          <p className="text-[11px] sm:text-xs font-semibold text-slate-300 flex items-center justify-center gap-2">
             <span>{activeCriterion.title}</span>
-            <span className="text-[10px] px-2 py-0.2 rounded-full bg-slate-800 text-amber-400 border border-slate-700 font-mono font-bold">
-              Scale: 0 – {activeCriterion.maxScore} Pts
+            <span className="text-[9px] px-2 py-0.2 rounded-full bg-slate-800 text-amber-400 border border-slate-700 font-mono font-bold">
+              Max {activeCriterion.maxScore} Pts
             </span>
           </p>
         </div>
       </header>
 
-      {/* Main Bar Chart */}
-      <section className={`flex-1 flex flex-col justify-center my-3 transition-all duration-300 ${
+      {/* Top 5 Rising Podium Bar Arena */}
+      <section className={`flex-none h-[170px] lg:h-[190px] w-full max-w-6xl mx-auto my-1 transition-all duration-300 ${
         isTransitioning ? 'opacity-0 scale-98' : 'opacity-100 scale-100'
       }`}>
-        <div className="relative w-full max-w-6xl mx-auto h-[260px] lg:h-[300px] bg-slate-900/40 rounded-3xl border border-slate-800/80 px-8 py-4 flex flex-col justify-end shadow-2xl">
+        <div className="relative w-full h-full bg-slate-900/40 rounded-2xl border border-slate-800/80 px-6 py-2 flex flex-col justify-end shadow-xl">
           
-          <div className="absolute inset-0 px-8 py-5 flex flex-col justify-between pointer-events-none opacity-15">
-            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono font-bold">{activeCriterion.maxScore} pts</div>
-            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono">{(activeCriterion.maxScore * 0.75).toFixed(0)} pts</div>
-            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono">{(activeCriterion.maxScore * 0.5).toFixed(0)} pts</div>
-            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[10px] text-slate-300 font-mono">{(activeCriterion.maxScore * 0.25).toFixed(0)} pts</div>
+          <div className="absolute inset-0 px-6 py-3 flex flex-col justify-between pointer-events-none opacity-15">
+            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[9px] text-slate-300 font-mono">{activeCriterion.maxScore} pts</div>
+            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[9px] text-slate-300 font-mono">{(activeCriterion.maxScore * 0.5).toFixed(0)} pts</div>
             <div className="border-b border-slate-600 w-full"></div>
           </div>
 
-          <div className="relative z-10 flex justify-center items-end gap-6 sm:gap-10 h-full pt-4">
+          <div className="relative z-10 flex justify-center items-end gap-6 sm:gap-10 h-full pt-2">
             {topFive.map((c, index) => {
               const score = c[activeCriterion.key] as number;
               const heightPercent = Math.max((score / activeCriterion.maxScore) * 100, 8);
 
               return (
-                <div key={c.id} className="flex flex-col items-center h-full justify-end min-w-[90px] sm:min-w-[110px]">
-                  
-                  <div className="mb-2 text-center">
-                    {index === 0 && <span className="text-xl block animate-bounce mb-0.5">👑</span>}
-                    <div className={`font-mono font-black text-xl lg:text-2xl ${activeCriterion.accentColor}`}>
+                <div key={c.id} className="flex flex-col items-center h-full justify-end min-w-[80px]">
+                  <div className="mb-1 text-center">
+                    {index === 0 && <span className="text-sm block animate-bounce mb-0.5">👑</span>}
+                    <div className={`font-mono font-black text-sm lg:text-base ${activeCriterion.accentColor}`}>
                       {score}
                     </div>
-                    <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                    <span className="text-[9px] uppercase font-mono font-bold px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
                       #{index + 1}
                     </span>
                   </div>
                   
-                  <div className="w-16 sm:w-20 bg-slate-900/90 rounded-2xl p-1 flex flex-col justify-end h-full border border-slate-700/60 shadow-inner">
+                  <div className="w-12 sm:w-16 bg-slate-900/90 rounded-xl p-0.5 flex flex-col justify-end h-full border border-slate-700/60 shadow-inner">
                     <div
-                      className={`w-full rounded-xl transition-all duration-700 bg-gradient-to-t ${activeCriterion.gradient}`}
+                      className={`w-full rounded-lg transition-all duration-700 bg-gradient-to-t ${activeCriterion.gradient}`}
                       style={{ height: `${heightPercent}%` }}
                     />
                   </div>
 
-                  <div className="mt-2 text-center w-full">
-                    <div className="text-xs sm:text-sm font-extrabold text-white truncate max-w-[120px]">
+                  <div className="mt-1 text-center w-full">
+                    <div className="text-[11px] font-extrabold text-white truncate max-w-[100px]">
                       {c.name}
                     </div>
                   </div>
@@ -315,51 +312,48 @@ function ProjectorContent() {
         </div>
       </section>
 
-      {/* Identical Uniform Contestant Grid */}
-      <section className="flex-none max-w-6xl w-full mx-auto pb-1">
-        <div className="flex items-center justify-between mb-1.5 px-1">
-          <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400">
-            Contestants Roster ({sortedStats.length})
+      {/* Complete 25 Contestant Matrix (5 Columns x 5 Rows = Zero Scroll) */}
+      <section className="flex-1 w-full max-w-6xl mx-auto flex flex-col justify-between my-1">
+        <div className="flex items-center justify-between px-1 mb-1">
+          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
+            Official Roster ({sortedStats.length} Contestants)
           </span>
-          <span className="text-[10px] font-mono text-slate-500">
-            Outfit (25) • Essence (20) • Walk (20) • Chem (20) • Impact (15)
+          <span className="text-[9px] font-mono text-slate-500">
+            O (25) • E (20) • W (20) • C (20) • I (15)
           </span>
         </div>
 
-        {/* All boxes have identical background, border, padding, and layout */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[145px] overflow-hidden">
+        <div className="grid grid-cols-5 gap-1.5 h-[calc(100%-20px)]">
           {sortedStats.map((c, idx) => {
             const currentVal = c[activeCriterion.key] as number;
 
             return (
               <div
                 key={c.id}
-                className="flex flex-col justify-between p-2 rounded-xl border border-slate-700/80 bg-slate-900/80 shadow-sm"
+                className="flex flex-col justify-between px-2 py-1 rounded-lg border border-slate-800 bg-slate-900/80 shadow-sm"
               >
-                {/* Header: Rank + Name + Category Score */}
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-slate-800 text-amber-400 border border-slate-700">
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-1 truncate">
+                    <span className="text-[9px] font-mono font-bold px-1 rounded bg-slate-800 text-amber-400 border border-slate-700">
                       #{idx + 1}
                     </span>
-                    <span className="text-xs font-bold text-slate-100 truncate">
+                    <span className="text-[10px] font-bold text-slate-100 truncate">
                       {c.name}
                     </span>
                   </div>
                   
-                  <span className="text-xs font-mono font-black text-amber-400">
+                  <span className="text-[11px] font-mono font-black text-amber-400">
                     {currentVal}
                   </span>
                 </div>
 
-                {/* Footer: Multi-Attribute Stats */}
-                <div className="flex justify-between items-center text-[9px] text-slate-400 font-mono border-t border-slate-800/80 pt-1">
+                <div className="flex justify-between items-center text-[8px] text-slate-400 font-mono border-t border-slate-800/80 pt-0.5 mt-0.5">
                   <span>O:{c.avgOutfit}</span>
                   <span>E:{c.avgEssence}</span>
                   <span>W:{c.avgWalk}</span>
                   <span>C:{c.avgChemistry}</span>
                   <span>I:{c.avgConfidence}</span>
-                  <span className="text-amber-300 font-bold ml-1">T:{c.avgTotal}</span>
+                  <span className="text-amber-300 font-bold">T:{c.avgTotal}</span>
                 </div>
               </div>
             );
@@ -368,7 +362,7 @@ function ProjectorContent() {
       </section>
 
       {/* Broadcast Footer */}
-      <footer className="flex-none flex justify-between items-center text-[10px] text-slate-500 font-mono pt-2 border-t border-slate-800/40">
+      <footer className="flex-none flex justify-between items-center text-[9px] text-slate-500 font-mono pt-1 border-t border-slate-800/40">
         <span>Bedford Marston Kerala Association • Official Scrutiny Console</span>
         <span>Auto-Rotation: Main (15s) • Criteria (5s) • Press <strong>F11</strong> for Fullscreen</span>
       </footer>
@@ -378,7 +372,7 @@ function ProjectorContent() {
 
 export default function ProjectorPage() {
   return (
-    <Suspense fallback={<div className="h-screen w-screen bg-[#070b14] text-white flex items-center justify-center font-mono text-sm">Launching Stage Presentation Arena...</div>}>
+    <Suspense fallback={<div className="h-screen w-screen bg-[#050811] text-white flex items-center justify-center font-mono text-sm">Launching Stage Presentation Arena...</div>}>
       <ProjectorContent />
     </Suspense>
   );
