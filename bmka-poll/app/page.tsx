@@ -37,12 +37,13 @@ export default function Home() {
   const [hasVotedCurrent, setHasVotedCurrent] = useState<boolean>(false);
   const [myVoteRecord, setMyVoteRecord] = useState<any>(null);
 
+  // All sliders start strictly at 0
   const [ratings, setRatings] = useState({
-    outfit: 18,
-    essence: 14,
-    walk: 14,
-    chemistry: 14,
-    confidence: 10
+    outfit: 0,
+    essence: 0,
+    walk: 0,
+    chemistry: 0,
+    confidence: 0
   });
 
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -137,7 +138,7 @@ export default function Home() {
       const live: LiveSession = data.value;
       setSession(live);
 
-      if (live.current_couple_id) {
+      if (live.current_couple_id && live.status !== 'idle') {
         const { data: cData } = await supabase
           .from('couples')
           .select('name')
@@ -166,12 +167,15 @@ export default function Home() {
           } else {
             setHasVotedCurrent(false);
             setMyVoteRecord(null);
+            // Reset to 0 when new contestant starts
+            setRatings({ outfit: 0, essence: 0, walk: 0, chemistry: 0, confidence: 0 });
           }
         }
       } else {
         setCurrentCoupleName('');
         setHasVotedCurrent(false);
         setMyVoteRecord(null);
+        setRatings({ outfit: 0, essence: 0, walk: 0, chemistry: 0, confidence: 0 });
       }
     }
   };
@@ -206,11 +210,15 @@ export default function Home() {
   };
 
   const totalScore = ratings.outfit + ratings.essence + ratings.walk + ratings.chemistry + ratings.confidence;
-  const isVotingOpen = session.status === 'voting' && timeLeft > 0 && !hasVotedCurrent && Boolean(session.current_couple_id);
+  const isVotingOpen = session.status === 'voting' && timeLeft > 0 && !hasVotedCurrent && Boolean(currentCoupleName);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!session.current_couple_id || !isVotingOpen) return;
+
+    if (totalScore === 0) {
+      if (!confirm('You have left all scores at 0. Are you sure you want to submit?')) return;
+    }
 
     setSubmitting(true);
     const votePayload = {
@@ -265,10 +273,10 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-orange-50/50 py-6 px-3 sm:px-6 lg:px-8 font-sans relative">
       
-      {/* ================= FIRST TIME WELCOME & TERMS MODAL ================= */}
+      {/* FIRST TIME WELCOME & TERMS MODAL */}
       {!hasAcceptedTerms && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-orange-200 text-gray-800 space-y-5 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-orange-200 text-gray-800 space-y-5">
             <div className="text-center space-y-2">
               <span className="text-4xl inline-block">🌺</span>
               <h2 className="text-2xl font-black text-orange-600">സ്വാഗതം / Welcome</h2>
@@ -283,16 +291,16 @@ export default function Home() {
               </h3>
               <ul className="list-disc pl-4 space-y-1.5 text-gray-600">
                 <li>
-                  <strong>One Vote Per Contestant:</strong> Each device can only submit one rating per contestant. Once submitted, your scores are <strong>permanently locked</strong> and cannot be altered.
+                  <strong>One Vote Per Contestant:</strong> Each device can only submit one rating per contestant. Once submitted, your scores are <strong>permanently locked</strong>.
                 </li>
                 <li>
                   <strong>Live Synchronised Rounds:</strong> Voting is enabled strictly for <strong>60 seconds</strong> while the contestant is performing on stage.
                 </li>
                 <li>
-                  <strong>Criteria Breakdown:</strong> Rate each contestant fairly across 5 attributes: Outfit (25), Essence (20), Walk (20), Chemistry (20), and Impact (15) for a maximum of 100 points.
+                  <strong>Scoring Scale:</strong> Rate across Outfit (25), Essence (20), Walk (20), Chemistry (20), and Impact (15) for a maximum of 100 points.
                 </li>
                 <li>
-                  <strong>Venue Integrity:</strong> Voting access is restricted exclusively to spectators physically attending the event hall.
+                  <strong>Venue Integrity:</strong> Voting access is restricted exclusively to spectators physically attending the hall.
                 </li>
               </ul>
             </div>
@@ -321,7 +329,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ================= AUDIENCE VOTING MAIN VIEW ================= */}
+      {/* AUDIENCE VOTING MAIN VIEW */}
       <div className="max-w-xl mx-auto space-y-4">
         
         {/* Header Banner */}
@@ -339,7 +347,7 @@ export default function Home() {
             Contestant On Stage
           </span>
           <h2 className="text-2xl font-black text-gray-900 min-h-[32px] flex items-center justify-center">
-            {currentCoupleName || 'Waiting for next contestant...'}
+            {currentCoupleName || 'Wait for the couple to start the ramp walk...'}
           </h2>
 
           <div className="pt-2">
@@ -353,7 +361,7 @@ export default function Home() {
               </div>
             ) : (
               <div className="inline-block bg-amber-50 border border-amber-200 px-4 py-1.5 rounded-full text-amber-800 font-mono text-xs font-semibold">
-                ⏳ Standby • Voting Opens When Stage Begins
+                {currentCoupleName ? '⏳ Standby • Voting Opens When Stage Begins' : '⏳ Wait for the couple to start the ramp walk...'}
               </div>
             )}
           </div>
@@ -468,9 +476,9 @@ export default function Home() {
             <div className="w-full bg-slate-100 text-slate-500 font-bold py-3.5 rounded-xl text-center border border-slate-200 text-xs font-mono">
               🔒 You have already voted for {currentCoupleName}
             </div>
-          ) : !session.current_couple_id || session.status !== 'voting' || timeLeft <= 0 ? (
+          ) : !currentCoupleName || session.status !== 'voting' || timeLeft <= 0 ? (
             <div className="w-full bg-slate-100 text-slate-400 font-bold py-3.5 rounded-xl text-center border border-slate-200 text-xs font-mono">
-              ⛔ Voting is closed for this round
+              {currentCoupleName ? '⛔ Voting is closed for this round' : '⏳ Wait for the couple to start the ramp walk...'}
             </div>
           ) : (
             <button

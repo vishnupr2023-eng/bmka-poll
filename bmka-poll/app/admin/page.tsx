@@ -70,6 +70,9 @@ export default function Admin() {
   });
   const [geoSaving, setGeoSaving] = useState(false);
 
+  // Copy notification banner
+  const [copyFeedback, setCopyFeedback] = useState('');
+
   const correctPin = 'Bmka2026@@';
 
   const fetchData = async () => {
@@ -156,6 +159,13 @@ export default function Admin() {
     }
   };
 
+  const handleCopyLink = (path: string, label: string) => {
+    const fullUrl = `${window.location.origin}${path}`;
+    navigator.clipboard.writeText(fullUrl);
+    setCopyFeedback(`Copied ${label} Link to clipboard!`);
+    setTimeout(() => setCopyFeedback(''), 3000);
+  };
+
   const handleSwitchProjectorMode = async (mode: 'live' | 'all') => {
     setModeUpdating(true);
     const { error } = await supabase
@@ -184,7 +194,6 @@ export default function Admin() {
       status: 'voting'
     };
 
-    // Auto set screen to live single view when voting starts
     await supabase.from('app_settings').upsert([{ key: 'projector_display_mode', value: { mode: 'live' } }]);
     setProjectorMode('live');
 
@@ -222,7 +231,7 @@ export default function Admin() {
   const handleResetStageSession = async () => {
     setSessionUpdating(true);
     const reset: LiveSession = {
-      current_couple_id: selectedContestantId,
+      current_couple_id: null,
       timer_duration: 60,
       started_at: null,
       status: 'idle'
@@ -338,7 +347,7 @@ export default function Admin() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
           <div>
             <h1 className="text-2xl font-black text-amber-500">BMKA 2026 Admin Dashboard</h1>
-            <p className="text-xs text-slate-400">Live Stage Controller & Real-Time Scrutiny</p>
+            <p className="text-xs text-slate-400">Live Stage Controller & Portal Hub</p>
             <span className="inline-block mt-1 text-[11px] px-2.5 py-0.5 rounded bg-slate-900 text-emerald-400 font-mono border border-slate-800">
               {statusMsg}
             </span>
@@ -350,13 +359,81 @@ export default function Admin() {
             <button onClick={handleResetVotes} className="px-3.5 py-2 bg-red-950/40 border border-red-800 text-red-300 hover:bg-red-900/60 rounded-lg text-xs font-semibold">
               ⚠️ Reset All Votes
             </button>
-            <Link href="/" className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-lg text-xs">
-              Audience Poll
-            </Link>
           </div>
         </div>
 
-        {/* ================= PROJECTOR SCREEN MASTER VIEW SWITCHER ================= */}
+        {/* ALL PAGE LINKS DIRECT DIRECTORY BAR */}
+        <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl space-y-2.5 shadow-lg">
+          <div className="flex justify-between items-center">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-400">
+              🔗 System Page Links & Quick Access
+            </span>
+            {copyFeedback && (
+              <span className="text-xs font-bold text-emerald-400 animate-pulse">{copyFeedback}</span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* 1. Audience Portal */}
+            <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block">Public Audience Portal</span>
+                <span className="text-xs font-bold text-white block mt-0.5">Mobile Voting Page (/)</span>
+              </div>
+              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/60">
+                <Link href="/" target="_blank" className="flex-1 py-1.5 bg-orange-600 hover:bg-orange-500 text-center rounded-lg text-xs font-bold text-white">
+                  Open ↗
+                </Link>
+                <button
+                  onClick={() => handleCopyLink('/', 'Audience Voting')}
+                  className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-mono text-slate-300"
+                >
+                  📋 Copy
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Big Screen Projector */}
+            <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-mono text-amber-400 uppercase font-bold block">Secret Stage Display</span>
+                <span className="text-xs font-bold text-white block mt-0.5">Big Screen Arena (?key=...)</span>
+              </div>
+              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/60">
+                <Link href="/projector?key=bmka2026screen" target="_blank" className="flex-1 py-1.5 bg-amber-600 hover:bg-amber-500 text-center rounded-lg text-xs font-bold text-slate-950">
+                  Open Screen ↗
+                </Link>
+                <button
+                  onClick={() => handleCopyLink('/projector?key=bmka2026screen', 'Big Screen')}
+                  className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-mono text-slate-300"
+                >
+                  📋 Copy
+                </button>
+              </div>
+            </div>
+
+            {/* 3. Admin Console */}
+            <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block">Protected Admin Access</span>
+                <span className="text-xs font-bold text-white block mt-0.5">Dashboard Controls (/admin)</span>
+              </div>
+              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/60">
+                <Link href="/admin" className="flex-1 py-1.5 bg-slate-700 hover:bg-slate-600 text-center rounded-lg text-xs font-bold text-white">
+                  Admin ↗
+                </Link>
+                <button
+                  onClick={() => handleCopyLink('/admin', 'Admin Dashboard')}
+                  className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-mono text-slate-300"
+                >
+                  📋 Copy
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* PROJECTOR SCREEN MASTER VIEW SWITCHER */}
         <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-3 shadow-lg">
           <div>
             <span className="text-[10px] font-mono uppercase text-amber-400 font-bold block">Projector Big Screen Display Mode</span>
@@ -390,7 +467,7 @@ export default function Admin() {
           </div>
         </div>
 
-        {/* ================= STAGE LIVE CONTROLLER ================= */}
+        {/* STAGE LIVE CONTROLLER */}
         <div className="bg-gradient-to-r from-amber-950/60 via-slate-900 to-slate-900 border-2 border-amber-500/70 p-6 rounded-3xl shadow-2xl space-y-5">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-3">
             <div className="flex items-center gap-3">
@@ -415,7 +492,6 @@ export default function Admin() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
-            {/* 1. Pick Contestant */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
                 1. Select Contestant Taking the Stage:
@@ -434,7 +510,6 @@ export default function Admin() {
               </select>
             </div>
 
-            {/* 2. Live Controls */}
             <div className="lg:col-span-2 flex flex-wrap items-center gap-3">
               <button
                 onClick={handleStartVotingSession}
@@ -457,7 +532,7 @@ export default function Admin() {
                 disabled={sessionUpdating}
                 className="px-4 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 transition"
               >
-                ↺ Reset
+                ↺ Reset to Standby
               </button>
             </div>
           </div>
@@ -465,7 +540,7 @@ export default function Admin() {
           <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800/80 flex flex-wrap justify-between items-center text-xs font-mono">
             <div>
               <span className="text-slate-500">Currently Active: </span>
-              <strong className="text-amber-400 text-sm font-sans">{currentOnStage?.name || 'None'}</strong>
+              <strong className="text-amber-400 text-sm font-sans">{liveSession.status !== 'idle' && currentOnStage ? currentOnStage.name : 'None (Wait for the couple to start the ramp walk...)'}</strong>
             </div>
             <div>
               <span className="text-slate-500">Ballots Cast in this Round: </span>
