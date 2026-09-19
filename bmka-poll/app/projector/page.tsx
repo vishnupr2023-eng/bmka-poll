@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 interface CoupleStat {
   id: string;
   name: string;
+  chestNumber: number;
   count: number;
   avgTotal: number;
   avgOutfit: number;
@@ -82,6 +83,12 @@ const CRITERIA: CriterionConfig[] = [
   }
 ];
 
+// Helper to extract numeric chest number ("Chest No 2" -> 2)
+function extractChestNumber(name: string): number {
+  const match = name.match(/\d+/);
+  return match ? parseInt(match[0], 10) : 999;
+}
+
 function ProjectorContent() {
   const searchParams = useSearchParams();
   const secretKey = searchParams.get('key');
@@ -97,7 +104,7 @@ function ProjectorContent() {
 
   const fetchScores = async () => {
     try {
-      const { data: couples } = await supabase.from('couples').select('*').order('name');
+      const { data: couples } = await supabase.from('couples').select('*');
       const { data: votes } = await supabase.from('votes').select('*');
 
       if (couples && votes) {
@@ -106,10 +113,13 @@ function ProjectorContent() {
         const calculated: CoupleStat[] = couples.map((c) => {
           const cVotes = votes.filter((v: any) => v.couple_id === c.id);
           const count = cVotes.length;
+          const chestNumber = extractChestNumber(c.name);
+
           if (count === 0) {
             return {
               id: c.id,
               name: c.name,
+              chestNumber,
               count: 0,
               avgTotal: 0,
               avgOutfit: 0,
@@ -129,6 +139,7 @@ function ProjectorContent() {
           return {
             id: c.id,
             name: c.name,
+            chestNumber,
             count,
             avgTotal: parseFloat((sumTotal / count).toFixed(1)),
             avgOutfit: parseFloat((sumOutfit / count).toFixed(1)),
@@ -190,27 +201,31 @@ function ProjectorContent() {
 
   const activeCriterion = CRITERIA[currentSlideIndex];
 
+  // Primary sort by Score descending; Tie-break by Chest Number ascending (1, 2, 3...)
   const sortedStats = [...stats].sort((a, b) => {
-    return (b[activeCriterion.key] as number) - (a[activeCriterion.key] as number);
+    const scoreDiff = (b[activeCriterion.key] as number) - (a[activeCriterion.key] as number);
+    if (scoreDiff !== 0) return scoreDiff;
+    return a.chestNumber - b.chestNumber;
   });
 
+  // Top 5 Leaders for the main arena view
   const topFive = sortedStats.slice(0, 5);
 
   return (
-    <main className="h-screen w-screen bg-[#050811] text-white flex flex-col justify-between overflow-hidden select-none p-3 lg:p-4 font-sans">
+    <main className="h-screen w-screen bg-[#050811] text-white flex flex-col justify-between overflow-hidden select-none p-4 lg:p-8 font-sans">
       
       {/* Top Header */}
-      <header className="flex-none border-b border-slate-800/80 pb-2">
-        <div className="flex justify-between items-center text-[10px] font-semibold uppercase tracking-wider text-amber-500 mb-1">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
+      <header className="flex-none border-b border-slate-800/80 pb-3">
+        <div className="flex justify-between items-center text-[11px] font-semibold uppercase tracking-wider text-amber-500 mb-1.5">
+          <div className="flex items-center gap-2.5">
+            <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
             <span className="font-mono text-slate-300 font-bold tracking-widest">BMKA PONNONAM 2026 • ARENA</span>
           </div>
 
-          <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-lg">
+          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2 py-1 rounded-xl shadow-inner">
             {CRITERIA.map((c, i) => (
               <button
                 key={c.key}
@@ -218,9 +233,9 @@ function ProjectorContent() {
                   switchSlide(i);
                   setIsPaused(true);
                 }}
-                className={`text-[9px] px-2 py-0.5 rounded font-bold transition ${
+                className={`text-[10px] px-2.5 py-0.5 rounded-lg font-bold transition ${
                   i === currentSlideIndex
-                    ? 'bg-amber-500 text-black shadow'
+                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20 scale-105'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -228,82 +243,97 @@ function ProjectorContent() {
               </button>
             ))}
 
-            <div className="h-2.5 w-[1px] bg-slate-700 mx-1"></div>
+            <div className="h-3 w-[1px] bg-slate-700 mx-1"></div>
 
             <button
               onClick={() => setIsPaused(!isPaused)}
-              className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono"
+              className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-mono"
             >
-              {isPaused ? '▶' : '⏸'}
+              {isPaused ? '▶ Play' : '⏸ Pause'}
             </button>
 
             {!isPaused && (
-              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/30">
                 ⏱ {secondsRemaining}s
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-3 text-slate-400 font-mono text-[10px]">
-            <span>Votes: <strong className="text-white font-bold">{totalVotes}</strong></span>
+          <div className="flex items-center gap-4 text-slate-400 font-mono text-[11px]">
+            <span>Audience Votes: <strong className="text-white font-bold">{totalVotes}</strong></span>
             <span>Sync: <span className="text-slate-200">{lastUpdated || '...'}</span></span>
           </div>
         </div>
 
-        {/* Malayalam Title */}
-        <div className={`text-center transition-all duration-300 ${isTransitioning ? 'opacity-0 -translate-y-1' : 'opacity-100 translate-y-0'}`}>
-          <h1 className="text-xl sm:text-2xl font-black text-amber-400 tracking-wide leading-tight">
+        {/* Malayalam & English Category Heading */}
+        <div className={`text-center transition-all duration-300 transform ${isTransitioning ? 'opacity-0 -translate-y-1' : 'opacity-100 translate-y-0'}`}>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-amber-400 tracking-wide leading-tight">
             {activeCriterion.titleMl}
           </h1>
-          <p className="text-[11px] sm:text-xs font-semibold text-slate-300 flex items-center justify-center gap-2">
+          <p className="text-sm sm:text-base font-semibold text-slate-300 flex items-center justify-center gap-2 mt-1">
             <span>{activeCriterion.title}</span>
-            <span className="text-[9px] px-2 py-0.2 rounded-full bg-slate-800 text-amber-400 border border-slate-700 font-mono font-bold">
+            <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-800 text-amber-400 border border-slate-700 font-mono font-bold">
               Max {activeCriterion.maxScore} Pts
             </span>
           </p>
         </div>
       </header>
 
-      {/* Top 5 Rising Podium Bar Arena */}
-      <section className={`flex-none h-[170px] lg:h-[190px] w-full max-w-6xl mx-auto my-1 transition-all duration-300 ${
+      {/* Full-Height Bar Arena (Clean Zero-Scroll Layout) */}
+      <section className={`flex-1 flex flex-col justify-center my-4 transition-all duration-300 ease-out transform ${
         isTransitioning ? 'opacity-0 scale-98' : 'opacity-100 scale-100'
       }`}>
-        <div className="relative w-full h-full bg-slate-900/40 rounded-2xl border border-slate-800/80 px-6 py-2 flex flex-col justify-end shadow-xl">
+        <div className="relative w-full max-w-6xl mx-auto h-[480px] lg:h-[540px] bg-slate-900/40 rounded-3xl border border-slate-800/80 px-8 py-6 flex flex-col justify-end shadow-2xl backdrop-blur-md">
           
-          <div className="absolute inset-0 px-6 py-3 flex flex-col justify-between pointer-events-none opacity-15">
-            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[9px] text-slate-300 font-mono">{activeCriterion.maxScore} pts</div>
-            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[9px] text-slate-300 font-mono">{(activeCriterion.maxScore * 0.5).toFixed(0)} pts</div>
+          {/* Subtle Horizontal Score Guides */}
+          <div className="absolute inset-0 px-8 py-6 flex flex-col justify-between pointer-events-none opacity-15">
+            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-xs text-slate-300 font-mono font-bold">{activeCriterion.maxScore} pts</div>
+            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-xs text-slate-300 font-mono">{(activeCriterion.maxScore * 0.75).toFixed(0)} pts</div>
+            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-xs text-slate-300 font-mono">{(activeCriterion.maxScore * 0.5).toFixed(0)} pts</div>
+            <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-xs text-slate-300 font-mono">{(activeCriterion.maxScore * 0.25).toFixed(0)} pts</div>
             <div className="border-b border-slate-600 w-full"></div>
           </div>
 
-          <div className="relative z-10 flex justify-center items-end gap-6 sm:gap-10 h-full pt-2">
+          {/* Rising Stage Bars with Proper Natural Sorting (#1 Chest No 1, #2 Chest No 2...) */}
+          <div className="relative z-10 flex justify-center items-end gap-6 sm:gap-12 h-full pt-4">
             {topFive.map((c, index) => {
               const score = c[activeCriterion.key] as number;
-              const heightPercent = Math.max((score / activeCriterion.maxScore) * 100, 8);
+              const heightPercent = Math.max((score / activeCriterion.maxScore) * 100, 6);
 
               return (
-                <div key={c.id} className="flex flex-col items-center h-full justify-end min-w-[80px]">
-                  <div className="mb-1 text-center">
-                    {index === 0 && <span className="text-sm block animate-bounce mb-0.5">👑</span>}
-                    <div className={`font-mono font-black text-sm lg:text-base ${activeCriterion.accentColor}`}>
+                <div key={c.id} className="flex flex-col items-center h-full justify-end min-w-[100px] sm:min-w-[130px] group">
+                  
+                  {/* Floating Rank & Score Tag */}
+                  <div className="mb-2 text-center transition-all duration-300 group-hover:-translate-y-1">
+                    {index === 0 && (
+                      <span className="text-2xl block animate-bounce mb-1 drop-shadow-[0_4px_10px_rgba(245,158,11,0.6)]">
+                        👑
+                      </span>
+                    )}
+                    <div className={`font-mono font-black text-2xl lg:text-3xl tracking-tight ${activeCriterion.accentColor}`}>
                       {score}
                     </div>
-                    <span className="text-[9px] uppercase font-mono font-bold px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                    <span className="text-xs uppercase font-mono font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
                       #{index + 1}
                     </span>
                   </div>
                   
-                  <div className="w-12 sm:w-16 bg-slate-900/90 rounded-xl p-0.5 flex flex-col justify-end h-full border border-slate-700/60 shadow-inner">
+                  {/* Vertical Animated Bar Pillar */}
+                  <div className="w-16 sm:w-24 bg-slate-900/90 rounded-2xl p-1 flex flex-col justify-end h-full border border-slate-700/60 shadow-inner">
                     <div
-                      className={`w-full rounded-lg transition-all duration-700 bg-gradient-to-t ${activeCriterion.gradient}`}
+                      className={`w-full rounded-xl transition-all duration-1000 shadow-xl bg-gradient-to-t ${activeCriterion.gradient}`}
                       style={{ height: `${heightPercent}%` }}
                     />
                   </div>
 
-                  <div className="mt-1 text-center w-full">
-                    <div className="text-[11px] font-extrabold text-white truncate max-w-[100px]">
+                  {/* Contestant Name Label */}
+                  <div className="mt-3 text-center w-full">
+                    <div className="text-sm sm:text-base font-extrabold text-white truncate">
                       {c.name}
                     </div>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      Overall: {c.avgTotal}
+                    </span>
                   </div>
                 </div>
               );
@@ -312,58 +342,9 @@ function ProjectorContent() {
         </div>
       </section>
 
-      {/* Complete 25 Contestant Matrix (5 Columns x 5 Rows = Zero Scroll) */}
-      <section className="flex-1 w-full max-w-6xl mx-auto flex flex-col justify-between my-1">
-        <div className="flex items-center justify-between px-1 mb-1">
-          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
-            Official Roster ({sortedStats.length} Contestants)
-          </span>
-          <span className="text-[9px] font-mono text-slate-500">
-            O (25) • E (20) • W (20) • C (20) • I (15)
-          </span>
-        </div>
-
-        <div className="grid grid-cols-5 gap-1.5 h-[calc(100%-20px)]">
-          {sortedStats.map((c, idx) => {
-            const currentVal = c[activeCriterion.key] as number;
-
-            return (
-              <div
-                key={c.id}
-                className="flex flex-col justify-between px-2 py-1 rounded-lg border border-slate-800 bg-slate-900/80 shadow-sm"
-              >
-                <div className="flex items-center justify-between gap-1">
-                  <div className="flex items-center gap-1 truncate">
-                    <span className="text-[9px] font-mono font-bold px-1 rounded bg-slate-800 text-amber-400 border border-slate-700">
-                      #{idx + 1}
-                    </span>
-                    <span className="text-[10px] font-bold text-slate-100 truncate">
-                      {c.name}
-                    </span>
-                  </div>
-                  
-                  <span className="text-[11px] font-mono font-black text-amber-400">
-                    {currentVal}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center text-[8px] text-slate-400 font-mono border-t border-slate-800/80 pt-0.5 mt-0.5">
-                  <span>O:{c.avgOutfit}</span>
-                  <span>E:{c.avgEssence}</span>
-                  <span>W:{c.avgWalk}</span>
-                  <span>C:{c.avgChemistry}</span>
-                  <span>I:{c.avgConfidence}</span>
-                  <span className="text-amber-300 font-bold">T:{c.avgTotal}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
       {/* Broadcast Footer */}
-      <footer className="flex-none flex justify-between items-center text-[9px] text-slate-500 font-mono pt-1 border-t border-slate-800/40">
-        <span>Bedford Marston Kerala Association • Official Scrutiny Console</span>
+      <footer className="flex-none flex justify-between items-center text-[10px] text-slate-500 font-mono pt-2 border-t border-slate-800/40">
+        <span>Bedford Marston Kerala Association • Official Stage Console</span>
         <span>Auto-Rotation: Main (15s) • Criteria (5s) • Press <strong>F11</strong> for Fullscreen</span>
       </footer>
     </main>
@@ -372,7 +353,7 @@ function ProjectorContent() {
 
 export default function ProjectorPage() {
   return (
-    <Suspense fallback={<div className="h-screen w-screen bg-[#050811] text-white flex items-center justify-center font-mono text-sm">Launching Stage Presentation Arena...</div>}>
+    <Suspense fallback={<div className="h-screen w-screen bg-[#050811] text-white flex items-center justify-center font-mono text-sm">Launching Stage Arena...</div>}>
       <ProjectorContent />
     </Suspense>
   );
