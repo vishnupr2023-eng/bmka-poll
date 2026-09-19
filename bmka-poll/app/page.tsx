@@ -1,24 +1,14 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { supabase } from '../lib/supabase';
 
-interface Couple {
-  id: string;
-  name: string;
+interface LiveSession {
+  current_couple_id: string | null;
+  timer_duration: number;
+  started_at: string | null;
+  status: 'idle' | 'voting' | 'completed';
 }
 
-interface SubmittedVote {
-  couple_id: string;
-  outfit: number;
-  essence: number;
-  walk: number;
-  chemistry: number;
-  confidence: number;
-  total: number;
-}
-
-// Haversine distance formula in meters
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371e3;
   const φ1 = (lat1 * Math.PI) / 180;
@@ -33,11 +23,17 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 export default function Home() {
-  const [couples, setCouples] = useState<Couple[]>([]);
   const [voterToken, setVoterToken] = useState<string>('');
-  const [myVotes, setMyVotes] = useState<Record<string, SubmittedVote>>({});
-  const [selectedCoupleId, setSelectedCoupleId] = useState<string>('');
-  
+  const [session, setSession] = useState<LiveSession>({
+    current_couple_id: null,
+    timer_duration: 60,
+    started_at: null,
+    status: 'idle'
+  });
+  const [currentCoupleName, setCurrentCoupleName] = useState<string>('');
+  const [hasVotedCurrent, setHasVotedCurrent] = useState<boolean>(false);
+  const [myVoteRecord, setMyVoteRecord] = useState<any>(null);
+
   const [ratings, setRatings] = useState({
     outfit: 18,
     essence: 14,
@@ -48,13 +44,11 @@ export default function Home() {
 
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [statusFeedback, setStatusFeedback] = useState<string>('');
-
-  // Geo-fence status
   const [geoBlocked, setGeoBlocked] = useState<boolean>(false);
   const [geoChecking, setGeoChecking] = useState<boolean>(true);
-  const [geoDistance, setGeoDistance] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number>(60);
 
-  // 1. Initialize persistent device voter ID
+  // Initialize voter identity
   useEffect(() => {
     let token = localStorage.getItem('bmka_voter_token');
     if (!token) {
@@ -64,20 +58,20 @@ export default function Home() {
     setVoterToken(token);
   }, []);
 
-  // 2. Real-time active presence heartbeat (every 15s)
+  // Send presence heartbeat
   useEffect(() => {
     if (!voterToken) return;
-    const sendHeartbeat = async () => {
+    const heartbeat = async () => {
       await supabase.from('active_sessions').upsert([
         { session_id: voterToken, last_seen: new Date().toISOString() }
       ]);
     };
-    sendHeartbeat();
-    const interval = setInterval(sendHeartbeat, 15000);
+    heartbeat();
+    const interval = setInterval(heartbeat, 15000);
     return () => clearInterval(interval);
   }, [voterToken]);
 
-  // 3. Check Geo-Fence Permissions
+  // Geo check
   useEffect(() => {
     async function verifyLocation() {
       setGeoChecking(true);
@@ -97,19 +91,9 @@ export default function Home() {
       }
 
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const dist = getDistanceMeters(
-            position.coords.latitude,
-            position.coords.longitude,
-            geoConfig.lat,
-            geoConfig.lng
-          );
-          setGeoDistance(Math.round(dist));
-          if (dist > geoConfig.radius_meters) {
-            setGeoBlocked(true);
-          } else {
-            setGeoBlocked(false);
-          }
+        (pos) => {
+          const dist = getDistanceMeters(pos.coords.latitude, pos.coords.longitude, geoConfig.lat, geoConfig.lng);
+          setGeoBlocked(dist > geoConfig.radius_meters);
           setGeoChecking(false);
         },
         () => {
@@ -119,68 +103,78 @@ export default function Home() {
         { enableHighAccuracy: true, timeout: 10000 }
       );
     }
-
     verifyLocation();
   }, []);
 
-  // 4. Fetch Couples and Existing Votes
-  const loadData = async (token: string) => {
-    const { data: couplesData } = await supabase
-      .from('couples')
-      .select('id, name')
-      .order('name', { ascending: true });
+  // Poll current live session every 2 seconds
+  const fetchSession = async () => {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'live_contestant_session')
+      .single();
 
-    if (couplesData && couplesData.length > 0) {
-      setCouples(couplesData);
-      if (!selectedCoupleId) {
-        setSelectedCoupleId(couplesData[0].id);
-      }
-    }
+    if (data?.value) {
+      const live: LiveSession = data.value;
+      setSession(live);
 
-    if (token) {
-      const { data: existingVotes } = await supabase
-        .from('votes')
-        .select('*')
-        .eq('voter_token', token);
+      if (live.current_couple_id) {
+        const { data: cData } = await supabase
+          .from('couples')
+          .select('name')
+          .eq('id', live.current_couple_id)
+          .single();
+        if (cData) setCurrentCoupleName(cData.name);
 
-      if (existingVotes) {
-        const mapped: Record<string, SubmittedVote> = {};
-        existingVotes.forEach((v: any) => {
-          mapped[v.couple_id] = v;
-        });
-        setMyVotes(mapped);
+        // Check if this voter already voted for this couple
+        if (voterToken) {
+          const { data: vData } = await supabase
+            .from('votes')
+            .select('*')
+            .eq('couple_id', live.current_couple_id)
+            .eq('voter_token', voterToken)
+            .maybeSingle();
+
+          if (vData) {
+            setHasVotedCurrent(true);
+            setMyVoteRecord(vData);
+            setRatings({
+              outfit: vData.outfit,
+              essence: vData.essence,
+              walk: vData.walk,
+              chemistry: vData.chemistry,
+              confidence: vData.confidence
+            });
+          } else {
+            setHasVotedCurrent(false);
+            setMyVoteRecord(null);
+          }
+        }
       }
     }
   };
 
   useEffect(() => {
     if (voterToken) {
-      loadData(voterToken);
+      fetchSession();
+      const interval = setInterval(fetchSession, 2000);
+      return () => clearInterval(interval);
     }
   }, [voterToken]);
 
-  // Populate form based on selected couple
+  // Sync remaining seconds on phone
   useEffect(() => {
-    if (selectedCoupleId && myVotes[selectedCoupleId]) {
-      const prior = myVotes[selectedCoupleId];
-      setRatings({
-        outfit: prior.outfit,
-        essence: prior.essence,
-        walk: prior.walk,
-        chemistry: prior.chemistry,
-        confidence: prior.confidence
-      });
-    } else {
-      setRatings({
-        outfit: 18,
-        essence: 14,
-        walk: 14,
-        chemistry: 14,
-        confidence: 10
-      });
+    if (session.status !== 'voting' || !session.started_at) {
+      setTimeLeft(0);
+      return;
     }
-    setStatusFeedback('');
-  }, [selectedCoupleId, myVotes]);
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - new Date(session.started_at!).getTime()) / 1000);
+      const rem = Math.max(session.timer_duration - elapsed, 0);
+      setTimeLeft(rem);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [session]);
 
   const handleRatingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setRatings({
@@ -190,27 +184,16 @@ export default function Home() {
   };
 
   const totalScore = ratings.outfit + ratings.essence + ratings.walk + ratings.chemistry + ratings.confidence;
-  const currentCouple = couples.find((c) => c.id === selectedCoupleId);
-  const isAlreadyLocked = Boolean(selectedCoupleId && myVotes[selectedCoupleId]);
+  const isVotingOpen = session.status === 'voting' && timeLeft > 0 && !hasVotedCurrent;
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!selectedCoupleId) {
-      alert('Please select a contestant to rate.');
-      return;
-    }
-
-    if (isAlreadyLocked) {
-      alert('Your vote for this couple has already been submitted and is locked.');
-      return;
-    }
+    if (!session.current_couple_id || !isVotingOpen) return;
 
     setSubmitting(true);
-    setStatusFeedback('');
-
     const votePayload = {
       voter_token: voterToken,
-      couple_id: selectedCoupleId,
+      couple_id: session.current_couple_id,
       outfit: ratings.outfit,
       essence: ratings.essence,
       walk: ratings.walk,
@@ -220,40 +203,24 @@ export default function Home() {
     };
 
     const { error } = await supabase.from('votes').insert([votePayload]);
-
     setSubmitting(false);
 
     if (error) {
-      alert('Failed to record score: ' + error.message);
+      alert('Failed to submit vote: ' + error.message);
       return;
     }
 
-    setMyVotes((prev) => ({
-      ...prev,
-      [selectedCoupleId]: votePayload
-    }));
-
-    setStatusFeedback(`✓ Vote permanently submitted & locked for ${currentCouple?.name || 'contestant'}!`);
-
-    // Auto-advance to next unvoted contestant
-    const unrated = couples.find((c) => c.id !== selectedCoupleId && !myVotes[c.id]);
-    if (unrated) {
-      setTimeout(() => {
-        setSelectedCoupleId(unrated.id);
-        setStatusFeedback('');
-      }, 1500);
-    }
+    setHasVotedCurrent(true);
+    setMyVoteRecord(votePayload);
+    setStatusFeedback('✓ Vote submitted and permanently locked!');
   };
 
-  const ratedCount = Object.keys(myVotes).length;
-
-  // Geo-Lock Blocked View
   if (geoChecking) {
     return (
-      <main className="min-h-screen bg-slate-900 flex items-center justify-center p-4 text-white text-center">
+      <main className="min-h-screen bg-slate-900 flex items-center justify-center p-4 text-white text-center font-sans">
         <div className="space-y-3">
           <div className="animate-spin text-3xl">📍</div>
-          <p className="text-sm font-mono text-slate-300">Verifying venue access location...</p>
+          <p className="text-sm font-mono text-slate-300">Checking venue location...</p>
         </div>
       </main>
     );
@@ -261,27 +228,13 @@ export default function Home() {
 
   if (geoBlocked) {
     return (
-      <main className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white text-center">
+      <main className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white text-center font-sans">
         <div className="max-w-md w-full bg-slate-900 p-8 rounded-3xl border border-red-800/60 shadow-2xl space-y-4">
           <div className="text-4xl">📍🚫</div>
-          <h2 className="text-xl font-bold text-red-400">Voting Geographically Restricted</h2>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Voting for <strong>BMKA Kerala Thanima 2026</strong> is strictly restricted to audience members inside the event hall.
+          <h2 className="text-xl font-bold text-red-400">Restricted to Event Venue</h2>
+          <p className="text-xs text-slate-300">
+            Voting for <strong>BMKA Kerala Thanima 2026</strong> is only accessible inside the hall.
           </p>
-          {geoDistance !== null && (
-            <p className="text-[11px] font-mono text-slate-400 bg-slate-800 p-2 rounded-lg">
-              Current distance to venue: ~{(geoDistance / 1000).toFixed(2)} km
-            </p>
-          )}
-          <p className="text-[11px] text-slate-500">
-            Please make sure device location / GPS permissions are enabled in your mobile browser.
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-xl border border-slate-700 transition"
-          >
-            Retry Location Check
-          </button>
         </div>
       </main>
     );
@@ -293,94 +246,49 @@ export default function Home() {
         
         {/* Header Banner */}
         <header className="bg-gradient-to-r from-orange-600 via-amber-600 to-red-700 rounded-2xl shadow-lg p-5 text-white text-center">
-          <div className="flex justify-between items-center text-[10px] uppercase tracking-wider mb-2 opacity-90 font-mono">
-            <span>BMKA Ponnonam 2026</span>
-            <span className="bg-black/20 px-2.5 py-0.5 rounded-full font-bold">
-              Completed: {ratedCount} / {couples.length}
-            </span>
+          <div className="text-[10px] uppercase tracking-wider mb-1 opacity-90 font-mono">
+            BMKA PONNONAM 2026
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black">കേരള തനിമ</h1>
-          <h2 className="text-base font-bold opacity-95">താരദമ്പതികൾ 2026 • Audience Scoring</h2>
-          <p className="text-xs opacity-85 mt-1">
-            Rate each couple as they appear. Once submitted, your vote is locked.
-          </p>
+          <h1 className="text-2xl sm:text-3xl font-black">കേരള തനിമ 2026</h1>
+          <p className="text-xs opacity-90 mt-1">Live Audience Voting Portal</p>
         </header>
 
-        {/* Contestant Selection Grid */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-orange-100">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-              Contestant Roster:
-            </span>
-            <span className="text-[10px] font-mono text-gray-500">
-              {couples.length - ratedCount} remaining
-            </span>
-          </div>
-          
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
-            {couples.map((c, idx) => {
-              const locked = Boolean(myVotes[c.id]);
-              const isSelected = selectedCoupleId === c.id;
+        {/* Current Contestant On Stage Card */}
+        <div className="bg-white rounded-2xl p-5 shadow-md border-2 border-orange-200 text-center space-y-2">
+          <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-orange-600 bg-orange-100 px-3 py-1 rounded-full">
+            Contestant On Stage
+          </span>
+          <h2 className="text-2xl font-black text-gray-900">
+            {currentCoupleName || 'Waiting for next contestant...'}
+          </h2>
 
-              return (
-                <button
-                  type="button"
-                  key={c.id}
-                  onClick={() => setSelectedCoupleId(c.id)}
-                  className={`flex flex-col text-left p-2.5 rounded-xl border text-xs transition-all ${
-                    isSelected
-                      ? 'border-orange-500 bg-orange-500/10 ring-2 ring-orange-500 shadow-sm'
-                      : locked
-                      ? 'border-slate-200 bg-slate-100/90 text-slate-600'
-                      : 'border-orange-200 bg-white hover:bg-orange-50/50 text-gray-800'
-                  }`}
-                >
-                  <div className="flex justify-between items-center w-full">
-                    <span className="font-mono text-[10px] text-gray-400 font-bold">
-                      #{idx + 1}
-                    </span>
-                    {locked && (
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-700 text-white font-bold">
-                        🔒 {myVotes[c.id].total} pts
-                      </span>
-                    )}
-                  </div>
-                  <span className="font-bold truncate mt-1 text-gray-900">
-                    {c.name}
-                  </span>
-                </button>
-              );
-            })}
+          {/* Voting Window Countdown Tag */}
+          <div className="pt-2">
+            {session.status === 'voting' && timeLeft > 0 ? (
+              <div className="inline-flex items-center gap-2 bg-amber-100 border border-amber-300 px-4 py-1.5 rounded-full text-amber-900 font-mono text-xs font-black animate-pulse">
+                <span>⏱ Voting Ends in: <strong>{timeLeft}s</strong></span>
+              </div>
+            ) : hasVotedCurrent ? (
+              <div className="inline-block bg-slate-100 border border-slate-300 px-4 py-1.5 rounded-full text-slate-700 font-mono text-xs font-bold">
+                🔒 Vote Submitted ({myVoteRecord?.total} pts)
+              </div>
+            ) : (
+              <div className="inline-block bg-red-100 border border-red-300 px-4 py-1.5 rounded-full text-red-800 font-mono text-xs font-bold">
+                ⛔ Voting is Currently Closed
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Live Rating Form */}
+        {/* Scoring Form (Only enabled when voting is open) */}
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-md p-5 border border-orange-100 space-y-5">
-          <div className="flex justify-between items-center border-b pb-3">
-            <div>
-              <span className="text-xs text-orange-600 font-bold uppercase tracking-wider block">
-                Selected Contestant
-              </span>
-              <h3 className="text-lg font-black text-gray-900">
-                {currentCouple ? currentCouple.name : 'Select Contestant'}
-              </h3>
-            </div>
-            {isAlreadyLocked && (
-              <span className="text-xs px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-bold border border-slate-300 flex items-center gap-1">
-                🔒 Vote Locked
-              </span>
-            )}
-          </div>
-
-          {/* Feedback message banner */}
           {statusFeedback && (
-            <div className="p-3 bg-emerald-100 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold text-center animate-pulse">
+            <div className="p-3 bg-emerald-100 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold text-center">
               {statusFeedback}
             </div>
           )}
 
-          {/* 5 Criteria Sliders */}
-          <div className={`space-y-4 bg-orange-50/40 p-3.5 rounded-xl border border-orange-100 ${isAlreadyLocked ? 'opacity-60 pointer-events-none' : ''}`}>
+          <div className={`space-y-4 bg-orange-50/40 p-3.5 rounded-xl border border-orange-100 ${!isVotingOpen ? 'opacity-50 pointer-events-none' : ''}`}>
             {/* 1. Outfit */}
             <div className="space-y-1">
               <div className="flex justify-between text-xs font-bold text-gray-800">
@@ -392,10 +300,10 @@ export default function Home() {
                 name="outfit"
                 min="0"
                 max="25"
-                disabled={isAlreadyLocked}
+                disabled={!isVotingOpen}
                 value={ratings.outfit}
                 onChange={handleRatingChange}
-                className="w-full accent-orange-600 h-2 bg-gray-200 rounded-lg cursor-pointer disabled:cursor-not-allowed"
+                className="w-full accent-orange-600 h-2 bg-gray-200 rounded-lg cursor-pointer"
               />
             </div>
 
@@ -410,10 +318,10 @@ export default function Home() {
                 name="essence"
                 min="0"
                 max="20"
-                disabled={isAlreadyLocked}
+                disabled={!isVotingOpen}
                 value={ratings.essence}
                 onChange={handleRatingChange}
-                className="w-full accent-orange-600 h-2 bg-gray-200 rounded-lg cursor-pointer disabled:cursor-not-allowed"
+                className="w-full accent-orange-600 h-2 bg-gray-200 rounded-lg cursor-pointer"
               />
             </div>
 
@@ -428,10 +336,10 @@ export default function Home() {
                 name="walk"
                 min="0"
                 max="20"
-                disabled={isAlreadyLocked}
+                disabled={!isVotingOpen}
                 value={ratings.walk}
                 onChange={handleRatingChange}
-                className="w-full accent-orange-600 h-2 bg-gray-200 rounded-lg cursor-pointer disabled:cursor-not-allowed"
+                className="w-full accent-orange-600 h-2 bg-gray-200 rounded-lg cursor-pointer"
               />
             </div>
 
@@ -446,10 +354,10 @@ export default function Home() {
                 name="chemistry"
                 min="0"
                 max="20"
-                disabled={isAlreadyLocked}
+                disabled={!isVotingOpen}
                 value={ratings.chemistry}
                 onChange={handleRatingChange}
-                className="w-full accent-orange-600 h-2 bg-gray-200 rounded-lg cursor-pointer disabled:cursor-not-allowed"
+                className="w-full accent-orange-600 h-2 bg-gray-200 rounded-lg cursor-pointer"
               />
             </div>
 
@@ -464,37 +372,38 @@ export default function Home() {
                 name="confidence"
                 min="0"
                 max="15"
-                disabled={isAlreadyLocked}
+                disabled={!isVotingOpen}
                 value={ratings.confidence}
                 onChange={handleRatingChange}
-                className="w-full accent-orange-600 h-2 bg-gray-200 rounded-lg cursor-pointer disabled:cursor-not-allowed"
+                className="w-full accent-orange-600 h-2 bg-gray-200 rounded-lg cursor-pointer"
               />
             </div>
           </div>
 
-          {/* Total Score Display */}
           <div className="bg-amber-100/70 p-3.5 rounded-xl flex justify-between items-center text-sm font-bold text-amber-950 border border-amber-200">
             <span>Total Score / ആകെ സ്കോർ:</span>
             <span className="text-xl text-orange-700 font-mono">{totalScore} / 100</span>
           </div>
 
-          {/* Submit / Locked Button */}
-          {isAlreadyLocked ? (
+          {hasVotedCurrent ? (
             <div className="w-full bg-slate-100 text-slate-500 font-bold py-3.5 rounded-xl text-center border border-slate-200 text-xs font-mono">
-              🔒 Score Locked for this contestant ({myVotes[selectedCoupleId].total} / 100)
+              🔒 You have already voted for {currentCoupleName}
+            </div>
+          ) : session.status !== 'voting' || timeLeft <= 0 ? (
+            <div className="w-full bg-slate-100 text-slate-400 font-bold py-3.5 rounded-xl text-center border border-slate-200 text-xs font-mono">
+              ⛔ Voting is closed for this contestant
             </div>
           ) : (
             <button
               type="submit"
-              disabled={submitting || !selectedCoupleId}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3.5 rounded-xl shadow-md transition disabled:opacity-50 text-sm tracking-wide"
+              disabled={submitting}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3.5 rounded-xl shadow-md transition text-sm tracking-wide"
             >
-              {submitting ? 'Submitting & Locking...' : 'Submit & Lock Score / സമർപ്പിക്കുക'}
+              {submitting ? 'Submitting...' : 'Submit & Lock Vote / സമർപ്പിക്കുക'}
             </button>
           )}
         </form>
 
-        {/* Footer */}
         <footer className="text-center text-[11px] text-gray-500 font-mono pt-2">
           Bedford Marston Kerala Association • Kerala Thanima 2026
         </footer>

@@ -15,6 +15,13 @@ interface GeoConfig {
   radius_meters: number;
 }
 
+interface LiveSession {
+  current_couple_id: string | null;
+  timer_duration: number;
+  started_at: string | null;
+  status: 'idle' | 'voting' | 'completed';
+}
+
 function extractChestNumber(name: string): number {
   const match = name.match(/\d+/);
   return match ? parseInt(match[0], 10) : 999;
@@ -31,6 +38,16 @@ export default function Admin() {
   const [newCoupleName, setNewCoupleName] = useState('');
   const [adding, setAdding] = useState(false);
   const [statusMsg, setStatusMsg] = useState('Connecting...');
+
+  // Live stage session state
+  const [liveSession, setLiveSession] = useState<LiveSession>({
+    current_couple_id: null,
+    timer_duration: 60,
+    started_at: null,
+    status: 'idle'
+  });
+  const [selectedContestantId, setSelectedContestantId] = useState<string>('');
+  const [sessionUpdating, setSessionUpdating] = useState(false);
 
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -52,7 +69,7 @@ export default function Admin() {
   const correctPin = 'Bmka2026@@';
 
   const fetchData = async () => {
-    setStatusMsg('Refreshing stats...');
+    setStatusMsg('Syncing stage stats...');
     try {
       const { data: couplesData } = await supabase.from('couples').select('*');
       const { data: votesData } = await supabase.from('votes').select('*');
@@ -75,9 +92,18 @@ export default function Admin() {
         .eq('key', 'winner_announcement')
         .single();
 
+      const { data: sessionData } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'live_contestant_session')
+        .single();
+
       if (couplesData) {
         const sorted = [...couplesData].sort((a, b) => extractChestNumber(a.name) - extractChestNumber(b.name));
         setCouples(sorted);
+        if (!selectedContestantId && sorted.length > 0) {
+          setSelectedContestantId(sessionData?.value?.current_couple_id || sorted[0].id);
+        }
       }
       if (votesData) {
         setVotes(votesData);
@@ -87,6 +113,12 @@ export default function Admin() {
       if (activeData) setActiveUsersNow(activeData.length);
       if (geoData?.value) setGeoConfig(geoData.value);
       if (winData?.value?.active !== undefined) setWinnerActive(winData.value.active);
+      if (sessionData?.value) {
+        setLiveSession(sessionData.value);
+        if (sessionData.value.current_couple_id) {
+          setSelectedContestantId(sessionData.value.current_couple_id);
+        }
+      }
 
       setStatusMsg(`Connected: ${couplesData?.length || 0} contestants • ${activeData?.length || 0} online`);
     } catch (err: any) {
@@ -97,7 +129,7 @@ export default function Admin() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
-      const interval = setInterval(fetchData, 5000);
+      const interval = setInterval(fetchData, 4000);
       return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
@@ -107,8 +139,75 @@ export default function Admin() {
     if (pin === correctPin) {
       setIsAuthenticated(true);
     } else {
-      alert('Invalid Passcode. Access denied.');
+      alert('Invalid Passcode.');
       setPin('');
+    }
+  };
+
+  // Live Stage Session Controls
+  const handleStartVotingSession = async () => {
+    if (!selectedContestantId) {
+      alert('Please select a contestant first');
+      return;
+    }
+
+    setSessionUpdating(true);
+    const newSession: LiveSession = {
+      current_couple_id: selectedContestantId,
+      timer_duration: 60,
+      started_at: new Date().toISOString(),
+      status: 'voting'
+    };
+
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert([{ key: 'live_contestant_session', value: newSession }]);
+    setSessionUpdating(false);
+
+    if (error) {
+      alert('Failed to start session: ' + error.message);
+    } else {
+      setLiveSession(newSession);
+    }
+  };
+
+  const handleEndVotingSession = async () => {
+    setSessionUpdating(true);
+    const updated: LiveSession = {
+      ...liveSession,
+      status: 'completed'
+    };
+
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert([{ key: 'live_contestant_session', value: updated }]);
+    setSessionUpdating(false);
+
+    if (error) {
+      alert('Failed to stop session: ' + error.message);
+    } else {
+      setLiveSession(updated);
+    }
+  };
+
+  const handleResetStageSession = async () => {
+    setSessionUpdating(true);
+    const reset: LiveSession = {
+      current_couple_id: selectedContestantId,
+      timer_duration: 60,
+      started_at: null,
+      status: 'idle'
+    };
+
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert([{ key: 'live_contestant_session', value: reset }]);
+    setSessionUpdating(false);
+
+    if (error) {
+      alert('Failed to reset: ' + error.message);
+    } else {
+      setLiveSession(reset);
     }
   };
 
@@ -153,7 +252,7 @@ export default function Admin() {
 
   const handleToggleWinner = async () => {
     const nextState = !winnerActive;
-    if (nextState && !confirm('This will pause the slideshow on the projector and trigger the WINNER ANNOUNCEMENT stage. Proceed?')) {
+    if (nextState && !confirm('Trigger WINNER ANNOUNCEMENT stage on the projector?')) {
       return;
     }
     setWinnerToggling(true);
@@ -176,55 +275,25 @@ export default function Admin() {
     fetchData();
   };
 
-  const handleSaveGeo = async () => {
-    setGeoSaving(true);
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert([{ key: 'geo_fence', value: geoConfig }]);
-    setGeoSaving(false);
-
-    if (error) {
-      alert('Failed to save Geo-Lock: ' + error.message);
-    } else {
-      alert(`Geo-Lock saved (${geoConfig.enabled ? 'ACTIVE' : 'DISABLED'})!`);
-    }
-  };
-
-  const handleDetectCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation not supported on this device.');
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGeoConfig((prev) => ({
-          ...prev,
-          lat: parseFloat(pos.coords.latitude.toFixed(6)),
-          lng: parseFloat(pos.coords.longitude.toFixed(6))
-        }));
-        alert(`Location pinned: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`);
-      },
-      (err) => alert('GPS error: ' + err.message),
-      { enableHighAccuracy: true }
-    );
-  };
+  const currentOnStage = couples.find((c) => c.id === liveSession.current_couple_id);
+  const currentOnStageVotes = votes.filter((v) => v.couple_id === liveSession.current_couple_id);
 
   if (!isAuthenticated) {
     return (
-      <main className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <main className="min-h-screen bg-slate-950 flex items-center justify-center p-4 font-sans">
         <form onSubmit={handleLogin} className="bg-slate-900 p-8 rounded-2xl shadow-2xl max-w-sm w-full border border-slate-800 text-white text-center">
           <div className="text-3xl mb-2">🔒</div>
           <h2 className="text-xl font-bold mb-1">BMKA Admin Console</h2>
-          <p className="text-xs text-slate-400 mb-6">Enter secure password to continue</p>
+          <p className="text-xs text-slate-400 mb-6">Enter secure passcode to continue</p>
           <input
             type="password"
             placeholder="••••••••••••"
             value={pin}
             autoFocus
             onChange={(e) => setPin(e.target.value)}
-            className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl mb-4 text-center text-lg tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+            className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl mb-4 text-center text-lg tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
-          <button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 font-bold py-3 rounded-xl transition shadow">
+          <button type="submit" className="w-full bg-amber-600 hover:bg-amber-500 font-bold py-3 rounded-xl transition shadow text-slate-950">
             Unlock Console
           </button>
         </form>
@@ -240,7 +309,7 @@ export default function Admin() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
           <div>
             <h1 className="text-2xl font-black text-amber-500">BMKA 2026 Admin Dashboard</h1>
-            <p className="text-xs text-slate-400">Contestant Management, Winner Announcement & Geo-Lock</p>
+            <p className="text-xs text-slate-400">Live Stage Controller & Real-Time Scrutiny</p>
             <span className="inline-block mt-1 text-[11px] px-2.5 py-0.5 rounded bg-slate-900 text-emerald-400 font-mono border border-slate-800">
               {statusMsg}
             </span>
@@ -252,47 +321,98 @@ export default function Admin() {
             <button onClick={handleResetVotes} className="px-3.5 py-2 bg-red-950/40 border border-red-800 text-red-300 hover:bg-red-900/60 rounded-lg text-xs font-semibold">
               ⚠️ Reset All Votes
             </button>
-            <Link href="/" className="px-3.5 py-2 bg-orange-600 hover:bg-orange-700 rounded-lg text-xs font-semibold">
-              Poll Screen
+            <Link href="/" className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-lg text-xs">
+              Audience Poll
             </Link>
           </div>
         </div>
 
-        {/* WINNER ANNOUNCEMENT STAGE BANNER */}
-        <div className={`p-5 rounded-2xl border transition-all flex flex-col sm:flex-row justify-between items-center gap-4 ${
-          winnerActive
-            ? 'bg-gradient-to-r from-amber-950/80 via-yellow-950/60 to-slate-900 border-amber-500 shadow-xl shadow-amber-500/20'
-            : 'bg-slate-900/90 border-slate-800'
-        }`}>
-          <div>
+        {/* ================= STAGE LIVE CONTROLLER (NEW) ================= */}
+        <div className="bg-gradient-to-r from-amber-950/60 via-slate-900 to-slate-900 border-2 border-amber-500/70 p-6 rounded-3xl shadow-2xl space-y-5">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🎤</span>
+              <div>
+                <h2 className="text-lg font-black text-white">Live Contestant Stage Controller</h2>
+                <p className="text-xs text-slate-400">Spectators can only vote for the contestant currently on stage</p>
+              </div>
+            </div>
+            
             <div className="flex items-center gap-2">
-              <span className="text-xl">🏆</span>
-              <h2 className="text-base font-bold text-white">Stage Winner Announcement</h2>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
-                winnerActive ? 'bg-amber-500 text-black animate-pulse' : 'bg-slate-800 text-slate-400'
+              <span className={`text-xs px-3 py-1 rounded-full font-mono font-black uppercase ${
+                liveSession.status === 'voting'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 animate-pulse'
+                  : liveSession.status === 'completed'
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/50'
+                  : 'bg-slate-800 text-slate-400'
               }`}>
-                {winnerActive ? 'LIVE ON PROJECTOR' : 'Standby'}
+                {liveSession.status === 'voting' ? '🟢 Voting Open (60s)' : liveSession.status === 'completed' ? '🔴 Voting Closed' : '⚪ Stage Idle'}
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Pauses criteria auto-rotation and reveals the Top 3 Champions with fireworks on the big screen.
-            </p>
           </div>
 
-          <button
-            onClick={handleToggleWinner}
-            disabled={winnerToggling}
-            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition tracking-wider uppercase shadow-lg ${
-              winnerActive
-                ? 'bg-red-600 hover:bg-red-500 text-white'
-                : 'bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950'
-            }`}
-          >
-            {winnerActive ? '⏹ Close Winner Screen' : '🎉 Announce Winner Now'}
-          </button>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+            {/* 1. Pick Contestant */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                1. Select Contestant Taking the Stage:
+              </label>
+              <select
+                value={selectedContestantId}
+                disabled={liveSession.status === 'voting'}
+                onChange={(e) => setSelectedContestantId(e.target.value)}
+                className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-sm font-bold text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
+              >
+                {couples.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 2. Live Controls */}
+            <div className="lg:col-span-2 flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleStartVotingSession}
+                disabled={sessionUpdating || liveSession.status === 'voting'}
+                className="flex-1 min-w-[200px] py-3.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-sm rounded-xl shadow-lg transition disabled:opacity-40"
+              >
+                ▶ Start 60s Live Voting
+              </button>
+
+              <button
+                onClick={handleEndVotingSession}
+                disabled={sessionUpdating || liveSession.status !== 'voting'}
+                className="px-5 py-3.5 bg-red-600 hover:bg-red-500 text-white font-black text-sm rounded-xl shadow transition disabled:opacity-40"
+              >
+                ⏹ Close Voting Early
+              </button>
+
+              <button
+                onClick={handleResetStageSession}
+                disabled={sessionUpdating}
+                className="px-4 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 transition"
+              >
+                ↺ Reset
+              </button>
+            </div>
+          </div>
+
+          {/* Current Status Preview */}
+          <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800/80 flex flex-wrap justify-between items-center text-xs font-mono">
+            <div>
+              <span className="text-slate-500">Currently Active: </span>
+              <strong className="text-amber-400 text-sm font-sans">{currentOnStage?.name || 'None'}</strong>
+            </div>
+            <div>
+              <span className="text-slate-500">Ballots Cast in this Round: </span>
+              <strong className="text-white text-sm">{currentOnStageVotes.length}</strong>
+            </div>
+          </div>
         </div>
 
-        {/* Analytics Badges */}
+        {/* Live Audience Analytics Badges */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
             <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Live Online Now</span>
@@ -303,7 +423,7 @@ export default function Admin() {
               </span>
               {activeUsersNow}
             </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">Active on page</span>
+            <span className="text-[10px] text-slate-500 mt-1 block">Active spectators</span>
           </div>
 
           <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
@@ -311,7 +431,7 @@ export default function Admin() {
             <div className="text-2xl font-black text-amber-400 font-mono mt-1">
               {uniqueVotersCount}
             </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">Unique audience members</span>
+            <span className="text-[10px] text-slate-500 mt-1 block">Unique devices voted</span>
           </div>
 
           <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
@@ -319,7 +439,7 @@ export default function Admin() {
             <div className="text-2xl font-black text-white font-mono mt-1">
               {votes.length}
             </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">Submitted couple votes</span>
+            <span className="text-[10px] text-slate-500 mt-1 block">All contestants combined</span>
           </div>
 
           <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
@@ -327,8 +447,42 @@ export default function Admin() {
             <div className="text-2xl font-black text-cyan-400 font-mono mt-1">
               {couples.length}
             </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">Registered in roster</span>
+            <span className="text-[10px] text-slate-500 mt-1 block">In competition roster</span>
           </div>
+        </div>
+
+        {/* Winner Announcement Toggle */}
+        <div className={`p-5 rounded-2xl border transition-all flex flex-col sm:flex-row justify-between items-center gap-4 ${
+          winnerActive
+            ? 'bg-gradient-to-r from-amber-950/80 via-yellow-950/60 to-slate-900 border-amber-500 shadow-xl shadow-amber-500/20'
+            : 'bg-slate-900/90 border-slate-800'
+        }`}>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🏆</span>
+              <h2 className="text-base font-bold text-white">Grand Championship Announcement</h2>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                winnerActive ? 'bg-amber-500 text-black animate-pulse' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {winnerActive ? 'LIVE ON STAGE' : 'Standby'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Pauses all voting and reveals the Top 3 Champions with fireworks on the big screen.
+            </p>
+          </div>
+
+          <button
+            onClick={handleToggleWinner}
+            disabled={winnerToggling}
+            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition tracking-wider uppercase shadow-lg ${
+              winnerActive
+                ? 'bg-red-600 hover:bg-red-500 text-white'
+                : 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 hover:from-amber-400 hover:to-yellow-300'
+            }`}
+          >
+            {winnerActive ? '⏹ Close Winner Screen' : '🎉 Announce Winner Now'}
+          </button>
         </div>
 
         {/* Contestants Management (Add, Rename, Delete) */}
@@ -340,10 +494,10 @@ export default function Admin() {
             <form onSubmit={handleAddCouple} className="space-y-3">
               <input
                 type="text"
-                placeholder="e.g. Chest No 26: Name"
+                placeholder="e.g. Chest No 26"
                 value={newCoupleName}
                 onChange={(e) => setNewCoupleName(e.target.value)}
-                className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
               <button
                 type="submit"
@@ -408,87 +562,6 @@ export default function Admin() {
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-
-        {/* Geo-Lock Venue Control */}
-        <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 space-y-4">
-          <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-            <div>
-              <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                <span>📍 Venue Geo-Lock Control</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
-                  geoConfig.enabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'
-                }`}>
-                  {geoConfig.enabled ? 'Active' : 'Disabled'}
-                </span>
-              </h2>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Restricts voting so only people inside the hall can submit scores.
-              </p>
-            </div>
-
-            <button
-              onClick={() => setGeoConfig({ ...geoConfig, enabled: !geoConfig.enabled })}
-              className={`text-xs px-4 py-2 rounded-xl font-bold transition ${
-                geoConfig.enabled ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 text-slate-300'
-              }`}
-            >
-              {geoConfig.enabled ? 'Enabled ✓' : 'Enable Geo-Lock'}
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-[11px] text-slate-400 font-mono mb-1">Latitude</label>
-              <input
-                type="number"
-                step="any"
-                value={geoConfig.lat}
-                onChange={(e) => setGeoConfig({ ...geoConfig, lat: parseFloat(e.target.value) || 0 })}
-                className="w-full p-2 bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] text-slate-400 font-mono mb-1">Longitude</label>
-              <input
-                type="number"
-                step="any"
-                value={geoConfig.lng}
-                onChange={(e) => setGeoConfig({ ...geoConfig, lng: parseFloat(e.target.value) || 0 })}
-                className="w-full p-2 bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] text-slate-400 font-mono mb-1">Radius</label>
-              <select
-                value={geoConfig.radius_meters}
-                onChange={(e) => setGeoConfig({ ...geoConfig, radius_meters: parseInt(e.target.value) || 500 })}
-                className="w-full p-2 bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono text-white"
-              >
-                <option value={200}>200m (Single Hall)</option>
-                <option value={500}>500m (Hall + Parking)</option>
-                <option value={1000}>1,000m (1 KM Vicinity)</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-            <button
-              onClick={handleDetectCurrentLocation}
-              type="button"
-              className="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-lg border border-slate-700 font-mono"
-            >
-              📍 Use My Current Location
-            </button>
-            <button
-              onClick={handleSaveGeo}
-              disabled={geoSaving}
-              type="button"
-              className="text-xs bg-amber-600 hover:bg-amber-500 font-bold px-5 py-2 rounded-lg shadow disabled:opacity-50"
-            >
-              {geoSaving ? 'Saving...' : 'Save Geo-Lock'}
-            </button>
           </div>
         </div>
 
