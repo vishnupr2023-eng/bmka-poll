@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabase';
 
@@ -8,11 +8,25 @@ interface Couple {
   name: string;
 }
 
-interface GeoConfig {
-  enabled: boolean;
-  lat: number;
-  lng: number;
-  radius_meters: number;
+interface EventProfile {
+  org_name: string;
+  event_name: string;
+  sub_title: string;
+  default_timer_seconds: number;
+}
+
+interface AdminUser {
+  id: string;
+  name: string;
+  passcode: string;
+  role: string;
+}
+
+interface ProjectorControl {
+  display_mode: 'live' | 'all';
+  active_criterion: string;
+  auto_rotate: boolean;
+  rotation_speed_seconds: number;
 }
 
 interface LiveSession {
@@ -28,22 +42,35 @@ function extractChestNumber(name: string): number {
 }
 
 export default function Admin() {
-  const [pin, setPin] = useState('');
+  const [passcode, setPasscode] = useState('');
+  const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [activeTab, setActiveTab] = useState<'stage' | 'event' | 'projector' | 'admins' | 'contestants'>('stage');
+
+  // Core Data
   const [couples, setCouples] = useState<Couple[]>([]);
   const [votes, setVotes] = useState<any[]>([]);
   const [uniqueVotersCount, setUniqueVotersCount] = useState(0);
   const [activeUsersNow, setActiveUsersNow] = useState(0);
 
-  const [newCoupleName, setNewCoupleName] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [statusMsg, setStatusMsg] = useState('Connecting...');
+  // Dynamic Event Profile
+  const [eventProfile, setEventProfile] = useState<EventProfile>({
+    org_name: 'Bedford Marston Kerala Association',
+    event_name: 'Kerala Thanima 2026',
+    sub_title: 'Official Audience Voting Portal',
+    default_timer_seconds: 60
+  });
+  const [savingProfile, setSavingProfile] = useState(false);
 
-  // Stage display mode state ('live' | 'all')
-  const [projectorMode, setProjectorMode] = useState<'live' | 'all'>('live');
-  const [modeUpdating, setModeUpdating] = useState(false);
+  // Projector Controller State
+  const [projControl, setProjControl] = useState<ProjectorControl>({
+    display_mode: 'live',
+    active_criterion: 'total',
+    auto_rotate: true,
+    rotation_speed_seconds: 10
+  });
 
-  // Live stage session state
+  // Live Stage Session
   const [liveSession, setLiveSession] = useState<LiveSession>({
     current_couple_id: null,
     timer_duration: 60,
@@ -51,817 +78,655 @@ export default function Admin() {
     status: 'idle'
   });
   const [selectedContestantId, setSelectedContestantId] = useState<string>('');
-  const [sessionUpdating, setSessionUpdating] = useState(false);
+  const [customRoundSeconds, setCustomRoundSeconds] = useState<number>(60);
 
-  // Editing state
+  // Admins List
+  const [adminList, setAdminList] = useState<AdminUser[]>([]);
+  const [newAdminName, setNewAdminName] = useState('');
+  const [newAdminPasscode, setNewAdminPasscode] = useState('');
+
+  // Contestant Editing
+  const [newCoupleName, setNewCoupleName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
-  // Winner announcement state
+  // Winner Announcement
   const [winnerActive, setWinnerActive] = useState(false);
-  const [winnerToggling, setWinnerToggling] = useState(false);
-
-  // Geo config state
-  const [geoConfig, setGeoConfig] = useState<GeoConfig>({
-    enabled: false,
-    lat: 52.13597,
-    lng: -0.46665,
-    radius_meters: 500
-  });
-  const [geoSaving, setGeoSaving] = useState(false);
-  
-  // Guard against background overwrite
-  const geoInitialised = useRef(false);
-
-  // Copy notification banner
   const [copyFeedback, setCopyFeedback] = useState('');
 
-  const correctPin = 'Bmka2026@@';
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passcode.trim()) return;
 
-  const fetchData = async () => {
-    setStatusMsg('Syncing stage stats...');
+    // First check default master passcode
+    if (passcode.trim() === 'Bmka2026@@') {
+      setCurrentAdmin({
+        id: 'master-admin',
+        name: 'Master Admin',
+        passcode: 'Bmka2026@@',
+        role: 'superadmin'
+      });
+      setIsAuthenticated(true);
+      return;
+    }
+
+    // Check database authorized admins
+    const { data: user } = await supabase
+      .from('admin_users')
+      .select('*')
+      .eq('passcode', passcode.trim())
+      .maybeSingle();
+
+    if (user) {
+      setCurrentAdmin(user);
+      setIsAuthenticated(true);
+    } else {
+      alert('Access Denied: Invalid admin passcode');
+      setPasscode('');
+    }
+  };
+
+  const fetchGlobalData = async () => {
     try {
+      // 1. Fetch Event Profile
+      const { data: profile } = await supabase.from('event_profile').select('*').eq('id', 'primary_event').maybeSingle();
+      if (profile) {
+        setEventProfile({
+          org_name: profile.org_name || 'Bedford Marston Kerala Association',
+          event_name: profile.event_name || 'Kerala Thanima 2026',
+          sub_title: profile.sub_title || 'Official Audience Voting Portal',
+          default_timer_seconds: profile.default_timer_seconds || 60
+        });
+      }
+
+      // 2. Fetch Projector Control Settings
+      const { data: projData } = await supabase.from('app_settings').select('value').eq('key', 'projector_control').maybeSingle();
+      if (projData?.value) {
+        setProjControl(projData.value);
+      }
+
+      // 3. Fetch Active Admins
+      const { data: admins } = await supabase.from('admin_users').select('*').order('created_at', { ascending: true });
+      if (admins) setAdminList(admins);
+
+      // 4. Fetch Couples & Votes
       const { data: couplesData } = await supabase.from('couples').select('*');
       const { data: votesData } = await supabase.from('votes').select('*');
-      
-      const fortyFiveSecondsAgo = new Date(Date.now() - 45000).toISOString();
-      const { data: activeData } = await supabase
-        .from('active_sessions')
-        .select('session_id')
-        .gte('last_seen', fortyFiveSecondsAgo);
-
-      const { data: geoData } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'geo_fence')
-        .single();
-
-      const { data: winData } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'winner_announcement')
-        .single();
-
-      const { data: sessionData } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'live_contestant_session')
-        .single();
-
-      const { data: modeData } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'projector_display_mode')
-        .single();
 
       if (couplesData) {
         const sorted = [...couplesData].sort((a, b) => extractChestNumber(a.name) - extractChestNumber(b.name));
         setCouples(sorted);
         if (!selectedContestantId && sorted.length > 0) {
-          setSelectedContestantId(sessionData?.value?.current_couple_id || sorted[0].id);
+          setSelectedContestantId(sorted[0].id);
         }
       }
+
       if (votesData) {
         setVotes(votesData);
         const tokens = new Set(votesData.map((v) => v.voter_token).filter(Boolean));
         setUniqueVotersCount(tokens.size);
       }
+
+      // 5. Active Live Sessions
+      const fortyFiveSecondsAgo = new Date(Date.now() - 45000).toISOString();
+      const { data: activeData } = await supabase.from('active_sessions').select('session_id').gte('last_seen', fortyFiveSecondsAgo);
       if (activeData) setActiveUsersNow(activeData.length);
 
-      // Only populate geo config on first load, so background interval never overrides user input
-      if (geoData?.value && !geoInitialised.current) {
-        setGeoConfig({
-          enabled: Boolean(geoData.value.enabled),
-          lat: typeof geoData.value.lat === 'number' ? geoData.value.lat : 52.13597,
-          lng: typeof geoData.value.lng === 'number' ? geoData.value.lng : -0.46665,
-          radius_meters: typeof geoData.value.radius_meters === 'number' ? geoData.value.radius_meters : 500
-        });
-        geoInitialised.current = true;
-      }
+      // 6. Stage Live Session
+      const { data: sessionData } = await supabase.from('app_settings').select('value').eq('key', 'live_contestant_session').maybeSingle();
+      if (sessionData?.value) setLiveSession(sessionData.value);
 
+      // 7. Winner state
+      const { data: winData } = await supabase.from('app_settings').select('value').eq('key', 'winner_announcement').maybeSingle();
       if (winData?.value?.active !== undefined) setWinnerActive(winData.value.active);
-      if (modeData?.value?.mode) setProjectorMode(modeData.value.mode);
 
-      if (sessionData?.value) {
-        setLiveSession(sessionData.value);
-        if (sessionData.value.current_couple_id) {
-          setSelectedContestantId(sessionData.value.current_couple_id);
-        }
-      }
-
-      setStatusMsg(`Connected: ${couplesData?.length || 0} contestants • ${activeData?.length || 0} online`);
     } catch (err: any) {
-      setStatusMsg('Error: ' + err.message);
+      console.error(err);
     }
   };
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchData();
-      const interval = setInterval(fetchData, 4000);
+      fetchGlobalData();
+      const interval = setInterval(fetchGlobalData, 4000);
       return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Save Event Profile
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === correctPin) {
-      setIsAuthenticated(true);
-    } else {
-      alert('Invalid Passcode.');
-      setPin('');
-    }
-  };
-
-  const handleCopyLink = (path: string, label: string) => {
-    const fullUrl = `${window.location.origin}${path}`;
-    navigator.clipboard.writeText(fullUrl);
-    setCopyFeedback(`Copied ${label} Link to clipboard!`);
-    setTimeout(() => setCopyFeedback(''), 3000);
-  };
-
-  const handleSwitchProjectorMode = async (mode: 'live' | 'all') => {
-    setModeUpdating(true);
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert([{ key: 'projector_display_mode', value: { mode } }], { onConflict: 'key' });
-    setModeUpdating(false);
+    setSavingProfile(true);
+    const { error } = await supabase.from('event_profile').upsert([{
+      id: 'primary_event',
+      org_name: eventProfile.org_name,
+      event_name: eventProfile.event_name,
+      sub_title: eventProfile.sub_title,
+      default_timer_seconds: Number(eventProfile.default_timer_seconds)
+    }], { onConflict: 'id' });
+    setSavingProfile(false);
 
     if (error) {
-      alert('Failed to switch projector screen: ' + error.message);
+      alert('Failed to save profile: ' + error.message);
     } else {
-      setProjectorMode(mode);
+      alert('Organization & Event Profile successfully updated globally!');
     }
   };
 
-  const handleStartVotingSession = async () => {
+  // Remote Projector Controller
+  const handleUpdateProjectorControl = async (partial: Partial<ProjectorControl>) => {
+    const updated = { ...projControl, ...partial };
+    setProjControl(updated);
+    await supabase.from('app_settings').upsert([
+      { key: 'projector_control', value: updated }
+    ], { onConflict: 'key' });
+  };
+
+  // Live Stage Round Controller
+  const handleStartVotingRound = async () => {
     if (!selectedContestantId) {
-      alert('Please select a contestant first');
+      alert('Please choose a contestant first');
       return;
     }
 
-    setSessionUpdating(true);
+    const duration = customRoundSeconds || eventProfile.default_timer_seconds || 60;
     const newSession: LiveSession = {
       current_couple_id: selectedContestantId,
-      timer_duration: 60,
+      timer_duration: duration,
       started_at: new Date().toISOString(),
       status: 'voting'
     };
 
-    await supabase.from('app_settings').upsert([{ key: 'projector_display_mode', value: { mode: 'live' } }], { onConflict: 'key' });
-    setProjectorMode('live');
+    handleUpdateProjectorControl({ display_mode: 'live' });
 
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert([{ key: 'live_contestant_session', value: newSession }], { onConflict: 'key' });
-    setSessionUpdating(false);
+    await supabase.from('app_settings').upsert([
+      { key: 'live_contestant_session', value: newSession }
+    ], { onConflict: 'key' });
 
-    if (error) {
-      alert('Failed to start session: ' + error.message);
-    } else {
-      setLiveSession(newSession);
-    }
+    setLiveSession(newSession);
   };
 
-  const handleEndVotingSession = async () => {
-    setSessionUpdating(true);
-    const updated: LiveSession = {
-      ...liveSession,
-      status: 'completed'
-    };
-
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert([{ key: 'live_contestant_session', value: updated }], { onConflict: 'key' });
-    setSessionUpdating(false);
-
-    if (error) {
-      alert('Failed to stop session: ' + error.message);
-    } else {
-      setLiveSession(updated);
-    }
+  const handleStopVotingEarly = async () => {
+    const updated: LiveSession = { ...liveSession, status: 'completed' };
+    await supabase.from('app_settings').upsert([
+      { key: 'live_contestant_session', value: updated }
+    ], { onConflict: 'key' });
+    setLiveSession(updated);
   };
 
-  const handleResetStageSession = async () => {
-    setSessionUpdating(true);
+  const handleResetStage = async () => {
     const reset: LiveSession = {
       current_couple_id: null,
-      timer_duration: 60,
+      timer_duration: eventProfile.default_timer_seconds,
       started_at: null,
       status: 'idle'
     };
+    await supabase.from('app_settings').upsert([
+      { key: 'live_contestant_session', value: reset }
+    ], { onConflict: 'key' });
+    setLiveSession(reset);
+  };
 
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert([{ key: 'live_contestant_session', value: reset }], { onConflict: 'key' });
-    setSessionUpdating(false);
+  // Add / Delete Admin Users
+  const handleAddAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminName.trim() || !newAdminPasscode.trim()) return;
+
+    const { error } = await supabase.from('admin_users').insert([{
+      name: newAdminName.trim(),
+      passcode: newAdminPasscode.trim(),
+      role: 'admin'
+    }]);
 
     if (error) {
-      alert('Failed to reset: ' + error.message);
+      alert('Failed to add admin: ' + error.message);
     } else {
-      setLiveSession(reset);
+      setNewAdminName('');
+      setNewAdminPasscode('');
+      fetchGlobalData();
+      alert('New admin user created!');
     }
   };
 
+  const handleDeleteAdmin = async (id: string, name: string) => {
+    if (!confirm(`Delete admin access for ${name}?`)) return;
+    await supabase.from('admin_users').delete().eq('id', id);
+    fetchGlobalData();
+  };
+
+  // Contestant Roster Handlers
   const handleAddCouple = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCoupleName.trim()) return;
-
-    setAdding(true);
-    const { error } = await supabase.from('couples').insert([{ name: newCoupleName.trim() }]);
-    setAdding(false);
-
-    if (error) {
-      alert('Error adding: ' + error.message);
-      return;
-    }
-
+    await supabase.from('couples').insert([{ name: newCoupleName.trim() }]);
     setNewCoupleName('');
-    fetchData();
-  };
-
-  const handleStartRename = (couple: Couple) => {
-    setEditingId(couple.id);
-    setEditingName(couple.name);
+    fetchGlobalData();
   };
 
   const handleSaveRename = async (id: string) => {
     if (!editingName.trim()) return;
-    const { error } = await supabase.from('couples').update({ name: editingName.trim() }).eq('id', id);
-    if (error) {
-      alert('Rename failed: ' + error.message);
-    } else {
-      setEditingId(null);
-      fetchData();
-    }
+    await supabase.from('couples').update({ name: editingName.trim() }).eq('id', id);
+    setEditingId(null);
+    fetchGlobalData();
   };
 
   const handleDeleteCouple = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete ${name}?`)) return;
+    if (!confirm(`Delete contestant ${name}?`)) return;
     await supabase.from('couples').delete().eq('id', id);
-    fetchData();
+    fetchGlobalData();
   };
 
   const handleToggleWinner = async () => {
     const nextState = !winnerActive;
-    if (nextState && !confirm('Trigger WINNER ANNOUNCEMENT stage on the projector?')) {
-      return;
-    }
-    setWinnerToggling(true);
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert([{ key: 'winner_announcement', value: { active: nextState } }], { onConflict: 'key' });
-    setWinnerToggling(false);
-
-    if (error) {
-      alert('Failed to update stage: ' + error.message);
-    } else {
-      setWinnerActive(nextState);
-    }
+    if (nextState && !confirm('Announce winners on stage screen?')) return;
+    await supabase.from('app_settings').upsert([
+      { key: 'winner_announcement', value: { active: nextState } }
+    ], { onConflict: 'key' });
+    setWinnerActive(nextState);
   };
 
-  // Immediate Persistent Geo-Lock Toggle
-  const handleToggleGeoEnabled = async () => {
-    const nextEnabled = !geoConfig.enabled;
-    const updated = { ...geoConfig, enabled: nextEnabled };
-    setGeoConfig(updated);
-    setGeoSaving(true);
-
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert([{ key: 'geo_fence', value: updated }], { onConflict: 'key' });
-
-    setGeoSaving(false);
-    if (error) {
-      alert('Failed to update Geo-Lock status: ' + error.message);
-      setGeoConfig(geoConfig);
-    } else {
-      alert(`Geo-Lock is now ${nextEnabled ? 'ACTIVE (Restricting access)' : 'DISABLED (Public access allowed)'}!`);
-    }
+  const handleCopyLink = (path: string, label: string) => {
+    navigator.clipboard.writeText(`${window.location.origin}${path}`);
+    setCopyFeedback(`Copied ${label} Link!`);
+    setTimeout(() => setCopyFeedback(''), 3000);
   };
-
-  // Save manual parameters (lat, lng, radius)
-  const handleSaveGeo = async () => {
-    setGeoSaving(true);
-    const payload = {
-      enabled: geoConfig.enabled,
-      lat: Number(geoConfig.lat),
-      lng: Number(geoConfig.lng),
-      radius_meters: Number(geoConfig.radius_meters)
-    };
-
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert([{ key: 'geo_fence', value: payload }], { onConflict: 'key' });
-
-    setGeoSaving(false);
-    if (error) {
-      alert('Failed to save Geo-Lock: ' + error.message);
-    } else {
-      alert(`Geo-Lock saved successfully! Lat: ${payload.lat}, Lng: ${payload.lng}, Radius: ${payload.radius_meters}m (${payload.enabled ? 'ACTIVE' : 'DISABLED'})`);
-    }
-  };
-
-  // Manual GPS location detection button
-  const handleDetectCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by this browser.');
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const newLat = parseFloat(pos.coords.latitude.toFixed(6));
-        const newLng = parseFloat(pos.coords.longitude.toFixed(6));
-        setGeoConfig((prev) => ({
-          ...prev,
-          lat: newLat,
-          lng: newLng
-        }));
-        alert(`Acquired GPS: Lat ${newLat}, Lng ${newLng}. Click "Save Geo-Lock Settings" to apply.`);
-      },
-      (err) => alert('GPS error: ' + err.message),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
-
-  const handleResetVotes = async () => {
-    if (!confirm('DANGER: Permanently wipe ALL votes for all contestants?')) return;
-    await supabase.from('votes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    alert('All votes have been cleared.');
-    fetchData();
-  };
-
-  const currentOnStage = couples.find((c) => c.id === liveSession.current_couple_id);
-  const currentOnStageVotes = votes.filter((v) => v.couple_id === liveSession.current_couple_id);
 
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-slate-950 flex items-center justify-center p-4 font-sans">
-        <form onSubmit={handleLogin} className="bg-slate-900 p-8 rounded-2xl shadow-2xl max-w-sm w-full border border-slate-800 text-white text-center">
-          <div className="text-3xl mb-2">🔒</div>
-          <h2 className="text-xl font-bold mb-1">BMKA Admin Console</h2>
-          <p className="text-xs text-slate-400 mb-6">Enter secure passcode to continue</p>
+        <form onSubmit={handleLogin} className="bg-slate-900 p-8 rounded-3xl shadow-2xl max-w-sm w-full border border-slate-800 text-white text-center">
+          <div className="text-4xl mb-3">⚙️</div>
+          <h2 className="text-xl font-bold mb-1">Universal Voting Management</h2>
+          <p className="text-xs text-slate-400 mb-6">Enter administrative passcode to continue</p>
           <input
             type="password"
             placeholder="••••••••••••"
-            value={pin}
+            value={passcode}
             autoFocus
-            onChange={(e) => setPin(e.target.value)}
-            className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl mb-4 text-center text-lg tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+            onChange={(e) => setPasscode(e.target.value)}
+            className="w-full p-3.5 bg-slate-800 border border-slate-700 rounded-xl mb-4 text-center text-lg tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
-          <button type="submit" className="w-full bg-amber-600 hover:bg-amber-500 font-bold py-3 rounded-xl transition shadow text-slate-950">
-            Unlock Console
+          <button type="submit" className="w-full bg-amber-500 hover:bg-amber-400 font-bold py-3.5 rounded-xl transition text-slate-950">
+            Authenticate & Open Console
           </button>
         </form>
       </main>
     );
   }
 
+  const currentOnStage = couples.find((c) => c.id === liveSession.current_couple_id);
+
   return (
     <main className="min-h-screen bg-slate-950 text-white p-4 sm:p-8 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* Header */}
+        {/* Top Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
           <div>
-            <h1 className="text-2xl font-black text-amber-500">BMKA 2026 Admin Dashboard</h1>
-            <p className="text-xs text-slate-400">Live Stage Controller, Geo-Lock & System Hub</p>
-            <span className="inline-block mt-1 text-[11px] px-2.5 py-0.5 rounded bg-slate-900 text-emerald-400 font-mono border border-slate-800">
-              {statusMsg}
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={fetchData} className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-semibold">
-              🔄 Refresh
-            </button>
-            <button onClick={handleResetVotes} className="px-3.5 py-2 bg-red-950/40 border border-red-800 text-red-300 hover:bg-red-900/60 rounded-lg text-xs font-semibold">
-              ⚠️ Reset All Votes
-            </button>
-          </div>
-        </div>
-
-        {/* ALL PAGE LINKS DIRECT DIRECTORY BAR */}
-        <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl space-y-2.5 shadow-lg">
-          <div className="flex justify-between items-center">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-400">
-              🔗 System Page Links & Quick Access
-            </span>
-            {copyFeedback && (
-              <span className="text-xs font-bold text-emerald-400 animate-pulse">{copyFeedback}</span>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* 1. Audience Portal */}
-            <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 flex flex-col justify-between">
-              <div>
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block">Public Audience Portal</span>
-                <span className="text-xs font-bold text-white block mt-0.5">Mobile Voting Page (/)</span>
-              </div>
-              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/60">
-                <Link href="/" target="_blank" className="flex-1 py-1.5 bg-orange-600 hover:bg-orange-500 text-center rounded-lg text-xs font-bold text-white">
-                  Open ↗
-                </Link>
-                <button
-                  onClick={() => handleCopyLink('/', 'Audience Voting')}
-                  className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-mono text-slate-300"
-                >
-                  📋 Copy
-                </button>
-              </div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-black text-amber-400">{eventProfile.org_name}</h1>
+              <span className="text-[10px] bg-slate-800 px-2.5 py-0.5 rounded-full font-mono text-slate-300">
+                {currentAdmin?.name} ({currentAdmin?.role})
+              </span>
             </div>
-
-            {/* 2. Big Screen Projector */}
-            <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 flex flex-col justify-between">
-              <div>
-                <span className="text-[10px] font-mono text-amber-400 uppercase font-bold block">Secret Stage Display</span>
-                <span className="text-xs font-bold text-white block mt-0.5">Big Screen Arena (?key=...)</span>
-              </div>
-              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/60">
-                <Link href="/projector?key=bmka2026screen" target="_blank" className="flex-1 py-1.5 bg-amber-600 hover:bg-amber-500 text-center rounded-lg text-xs font-bold text-slate-950">
-                  Open Screen ↗
-                </Link>
-                <button
-                  onClick={() => handleCopyLink('/projector?key=bmka2026screen', 'Big Screen')}
-                  className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-mono text-slate-300"
-                >
-                  📋 Copy
-                </button>
-              </div>
-            </div>
-
-            {/* 3. Admin Console */}
-            <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 flex flex-col justify-between">
-              <div>
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block">Protected Admin Access</span>
-                <span className="text-xs font-bold text-white block mt-0.5">Dashboard Controls (/admin)</span>
-              </div>
-              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/60">
-                <Link href="/admin" className="flex-1 py-1.5 bg-slate-700 hover:bg-slate-600 text-center rounded-lg text-xs font-bold text-white">
-                  Admin ↗
-                </Link>
-                <button
-                  onClick={() => handleCopyLink('/admin', 'Admin Dashboard')}
-                  className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-mono text-slate-300"
-                >
-                  📋 Copy
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* PROJECTOR SCREEN MASTER VIEW SWITCHER */}
-        <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-3 shadow-lg">
-          <div>
-            <span className="text-[10px] font-mono uppercase text-amber-400 font-bold block">Projector Big Screen Display Mode</span>
-            <p className="text-xs text-slate-300">Choose what the stage screen shows right now</p>
+            <p className="text-xs text-slate-400">{eventProfile.event_name} • Universal Stage Console</p>
           </div>
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => handleSwitchProjectorMode('live')}
-              disabled={modeUpdating}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                projectorMode === 'live'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              onClick={handleToggleWinner}
+              className={`text-xs px-3.5 py-2 rounded-xl font-bold uppercase tracking-wider transition ${
+                winnerActive ? 'bg-red-600 hover:bg-red-500' : 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950'
               }`}
             >
-              <span>🎯 Live Stage (60s Timer)</span>
+              {winnerActive ? '⏹ Close Winner Podium' : '🏆 Announce Winner'}
             </button>
-
             <button
-              onClick={() => handleSwitchProjectorMode('all')}
-              disabled={modeUpdating}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                projectorMode === 'all'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
+              onClick={() => setIsAuthenticated(false)}
+              className="text-xs px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700 text-slate-300"
             >
-              <span>📊 All Contestants Details</span>
+              Logout
             </button>
           </div>
         </div>
 
-        {/* STAGE LIVE CONTROLLER */}
-        <div className="bg-gradient-to-r from-amber-950/60 via-slate-900 to-slate-900 border-2 border-amber-500/70 p-6 rounded-3xl shadow-2xl space-y-5">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-3">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🎤</span>
-              <div>
-                <h2 className="text-lg font-black text-white">Live Contestant Stage Controller</h2>
-                <p className="text-xs text-slate-400">Spectators can only vote for the contestant currently on stage</p>
+        {/* Global Directory Bar */}
+        <div className="bg-slate-900/90 border border-slate-800 p-3.5 rounded-2xl flex flex-wrap justify-between items-center gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-amber-400 font-bold">Direct Access Links:</span>
+            {copyFeedback && <span className="text-emerald-400 font-bold animate-pulse">{copyFeedback}</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => handleCopyLink('/', 'Voter')} className="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200">
+              📋 Copy Voter Portal
+            </button>
+            <button onClick={() => handleCopyLink('/projector?key=bmka2026screen', 'Projector')} className="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200">
+              📋 Copy Big Screen Link
+            </button>
+            <Link href="/" target="_blank" className="px-3 py-1 bg-orange-600/80 hover:bg-orange-600 rounded-lg text-white font-bold">
+              Open Voter App ↗
+            </Link>
+          </div>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex border-b border-slate-800 gap-2 overflow-x-auto pb-1">
+          {[
+            { key: 'stage', label: '🎤 Stage Live Control' },
+            { key: 'projector', label: '🖥️ Projector Screen Orchestrator' },
+            { key: 'event', label: '⚙️ Branding & Event Settings' },
+            { key: 'contestants', label: `👥 Contestants (${couples.length})` },
+            { key: 'admins', label: `🔑 Admins (${adminList.length})` }
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key as any)}
+              className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition whitespace-nowrap ${
+                activeTab === tab.key
+                  ? 'bg-slate-800 text-amber-400 border-t-2 border-amber-500'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* TAB 1: STAGE LIVE CONTROLLER */}
+        {activeTab === 'stage' && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-r from-amber-950/60 via-slate-900 to-slate-900 border-2 border-amber-500/70 p-6 rounded-3xl space-y-5">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h2 className="text-base font-black flex items-center gap-2">
+                  <span>🎤 Live Stage Round Manager</span>
+                </h2>
+                <span className={`text-xs px-3 py-1 rounded-full font-mono font-bold uppercase ${
+                  liveSession.status === 'voting' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500' : 'bg-slate-800 text-slate-400'
+                }`}>
+                  {liveSession.status === 'voting' ? '🟢 Round Active' : '⚪ Standby'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Select Stage Contestant:</label>
+                  <select
+                    value={selectedContestantId}
+                    onChange={(e) => setSelectedContestantId(e.target.value)}
+                    className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-sm font-bold text-amber-400"
+                  >
+                    {couples.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Voting Window Duration (Seconds):</label>
+                  <select
+                    value={customRoundSeconds}
+                    onChange={(e) => setCustomRoundSeconds(Number(e.target.value))}
+                    className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-sm font-bold text-white"
+                  >
+                    <option value={30}>30 Seconds (Fast Round)</option>
+                    <option value={45}>45 Seconds</option>
+                    <option value={60}>60 Seconds (Standard)</option>
+                    <option value={90}>90 Seconds (Extended)</option>
+                    <option value={120}>120 Seconds (2 Minutes)</option>
+                    <option value={180}>180 Seconds (3 Minutes)</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleStartVotingRound}
+                    disabled={liveSession.status === 'voting'}
+                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl transition disabled:opacity-40"
+                  >
+                    ▶ Launch Round
+                  </button>
+                  <button
+                    onClick={handleStopVotingEarly}
+                    disabled={liveSession.status !== 'voting'}
+                    className="px-4 py-3 bg-red-600 hover:bg-red-500 text-white font-black text-xs rounded-xl transition disabled:opacity-40"
+                  >
+                    ⏹ Stop Early
+                  </button>
+                  <button
+                    onClick={handleResetStage}
+                    className="px-3 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700"
+                  >
+                    ↺ Reset
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-xs font-mono flex justify-between">
+                <span>Active on Stage: <strong className="text-amber-400 font-sans">{currentOnStage?.name || 'Waiting for next couple...'}</strong></span>
+                <span>Active Online Spectators: <strong className="text-emerald-400">{activeUsersNow}</strong></span>
               </div>
             </div>
-            
-            <div className="flex items-center gap-2">
-              <span className={`text-xs px-3 py-1 rounded-full font-mono font-black uppercase ${
-                liveSession.status === 'voting'
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 animate-pulse'
-                  : liveSession.status === 'completed'
-                  ? 'bg-red-500/20 text-red-400 border border-red-500/50'
-                  : 'bg-slate-800 text-slate-400'
-              }`}>
-                {liveSession.status === 'voting' ? '🟢 Voting Open (60s)' : liveSession.status === 'completed' ? '🔴 Voting Closed' : '⚪ Stage Idle'}
-              </span>
-            </div>
           </div>
+        )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
-                1. Select Contestant Taking the Stage:
-              </label>
-              <select
-                value={selectedContestantId}
-                disabled={liveSession.status === 'voting'}
-                onChange={(e) => setSelectedContestantId(e.target.value)}
-                className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-sm font-bold text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
-              >
-                {couples.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="lg:col-span-2 flex flex-wrap items-center gap-3">
-              <button
-                onClick={handleStartVotingSession}
-                disabled={sessionUpdating || liveSession.status === 'voting'}
-                className="flex-1 min-w-[200px] py-3.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-sm rounded-xl shadow-lg transition disabled:opacity-40"
-              >
-                ▶ Start 60s Live Voting
-              </button>
-
-              <button
-                onClick={handleEndVotingSession}
-                disabled={sessionUpdating || liveSession.status !== 'voting'}
-                className="px-5 py-3.5 bg-red-600 hover:bg-red-500 text-white font-black text-sm rounded-xl shadow transition disabled:opacity-40"
-              >
-                ⏹ Close Voting Early
-              </button>
-
-              <button
-                onClick={handleResetStageSession}
-                disabled={sessionUpdating}
-                className="px-4 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 transition"
-              >
-                ↺ Reset to Standby
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800/80 flex flex-wrap justify-between items-center text-xs font-mono">
+        {/* TAB 2: PROJECTOR SCREEN ORCHESTRATOR */}
+        {activeTab === 'projector' && (
+          <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-3xl space-y-6">
             <div>
-              <span className="text-slate-500">Currently Active: </span>
-              <strong className="text-amber-400 text-sm font-sans">{liveSession.status !== 'idle' && currentOnStage ? currentOnStage.name : 'None (Wait for the couple to start the ramp walk...)'}</strong>
-            </div>
-            <div>
-              <span className="text-slate-500">Ballots Cast in this Round: </span>
-              <strong className="text-white text-sm">{currentOnStageVotes.length}</strong>
-            </div>
-          </div>
-        </div>
-
-        {/* Live Audience Analytics Badges */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
-            <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Live Online Now</span>
-            <div className="text-2xl font-black text-emerald-400 font-mono flex items-center gap-2 mt-1">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-              </span>
-              {activeUsersNow}
-            </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">Active spectators</span>
-          </div>
-
-          <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
-            <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Total Voters</span>
-            <div className="text-2xl font-black text-amber-400 font-mono mt-1">
-              {uniqueVotersCount}
-            </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">Unique devices voted</span>
-          </div>
-
-          <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
-            <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Total Ballots Cast</span>
-            <div className="text-2xl font-black text-white font-mono mt-1">
-              {votes.length}
-            </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">All contestants combined</span>
-          </div>
-
-          <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
-            <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Geo-Lock Status</span>
-            <div className={`text-2xl font-black font-mono mt-1 ${geoConfig.enabled ? 'text-emerald-400' : 'text-slate-400'}`}>
-              {geoConfig.enabled ? 'ACTIVE' : 'OFF'}
-            </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">Venue GPS perimeter</span>
-          </div>
-        </div>
-
-        {/* VENUE GEO-LOCK SETUP CONTROL PANEL */}
-        <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-3">
-            <div>
-              <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                <span>📍 Venue Geo-Lock Setup</span>
-                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold ${
-                  geoConfig.enabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'
-                }`}>
-                  {geoConfig.enabled ? 'Geo-Lock Active' : 'Disabled'}
-                </span>
-              </h2>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Restricts mobile voting so only spectators physically inside the event hall can submit votes.
-              </p>
+              <h2 className="text-base font-black text-white">🖥️ Remote Big Screen Display Management</h2>
+              <p className="text-xs text-slate-400">Control what the event projector displays in real time without touching the stage laptop</p>
             </div>
 
-            <button
-              onClick={handleToggleGeoEnabled}
-              disabled={geoSaving}
-              className={`text-xs px-4 py-2 rounded-xl font-bold transition ${
-                geoConfig.enabled ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-              }`}
-            >
-              {geoConfig.enabled ? 'Enabled ✓ (Click to Turn OFF)' : 'Disabled (Click to Turn ON)'}
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-[11px] text-slate-400 font-mono mb-1">Venue Latitude</label>
-              <input
-                type="number"
-                step="any"
-                value={geoConfig.lat}
-                onChange={(e) => setGeoConfig((prev) => ({ ...prev, lat: parseFloat(e.target.value) || 0 }))}
-                className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] text-slate-400 font-mono mb-1">Venue Longitude</label>
-              <input
-                type="number"
-                step="any"
-                value={geoConfig.lng}
-                onChange={(e) => setGeoConfig((prev) => ({ ...prev, lng: parseFloat(e.target.value) || 0 }))}
-                className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] text-slate-400 font-mono mb-1">Allowed Radius</label>
-              <select
-                value={geoConfig.radius_meters}
-                onChange={(e) => setGeoConfig((prev) => ({ ...prev, radius_meters: parseInt(e.target.value) || 500 }))}
-                className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                <option value={200}>200m (Single Event Hall)</option>
-                <option value={500}>500m (Hall + Parking Area)</option>
-                <option value={1000}>1,000m (1 KM Vicinity)</option>
-                <option value={2500}>2,500m (Bedford Local Area)</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
-            <button
-              onClick={handleDetectCurrentLocation}
-              type="button"
-              className="text-xs bg-slate-800 hover:bg-slate-700 px-3.5 py-2 rounded-lg border border-slate-700 font-mono text-slate-200 transition"
-            >
-              📍 Use My Current Location
-            </button>
-            <button
-              onClick={handleSaveGeo}
-              disabled={geoSaving}
-              type="button"
-              className="text-xs bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold px-5 py-2 rounded-lg shadow transition disabled:opacity-50"
-            >
-              {geoSaving ? 'Saving...' : 'Save Geo-Lock Settings'}
-            </button>
-          </div>
-        </div>
-
-        {/* Winner Announcement Toggle */}
-        <div className={`p-5 rounded-2xl border transition-all flex flex-col sm:flex-row justify-between items-center gap-4 ${
-          winnerActive
-            ? 'bg-gradient-to-r from-amber-950/80 via-yellow-950/60 to-slate-900 border-amber-500 shadow-xl shadow-amber-500/20'
-            : 'bg-slate-900/90 border-slate-800'
-        }`}>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xl">🏆</span>
-              <h2 className="text-base font-bold text-white">Grand Championship Announcement</h2>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
-                winnerActive ? 'bg-amber-500 text-black animate-pulse' : 'bg-slate-800 text-slate-400'
-              }`}>
-                {winnerActive ? 'LIVE ON STAGE' : 'Standby'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Pauses all voting and reveals the Top 3 Champions with fireworks on the big screen.
-            </p>
-          </div>
-
-          <button
-            onClick={handleToggleWinner}
-            disabled={winnerToggling}
-            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition tracking-wider uppercase shadow-lg ${
-              winnerActive
-                ? 'bg-red-600 hover:bg-red-500 text-white'
-                : 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 hover:from-amber-400 hover:to-yellow-300'
-            }`}
-          >
-            {winnerActive ? '⏹ Close Winner Screen' : '🎉 Announce Winner Now'}
-          </button>
-        </div>
-
-        {/* Contestants Management (Add, Rename, Delete) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 space-y-4">
-            <h2 className="text-sm font-bold flex items-center gap-2">
-              <span>➕ Add Contestant</span>
-            </h2>
-            <form onSubmit={handleAddCouple} className="space-y-3">
-              <input
-                type="text"
-                placeholder="e.g. Chest No 26"
-                value={newCoupleName}
-                onChange={(e) => setNewCoupleName(e.target.value)}
-                className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
-              <button
-                type="submit"
-                disabled={adding}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-lg text-xs font-bold transition disabled:opacity-50"
-              >
-                {adding ? 'Adding...' : 'Add Contestant'}
-              </button>
-            </form>
-          </div>
-
-          <div className="lg:col-span-2 bg-slate-900/90 p-5 rounded-2xl border border-slate-800">
-            <div className="flex justify-between items-center mb-3">
-              <h2 className="text-sm font-bold">👥 Roster & Rename ({couples.length})</h2>
-              <span className="text-[10px] text-slate-400 font-mono">Tap ✏️ to rename contestant</span>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
-              {couples.map((c) => (
-                <div key={c.id} className="flex justify-between items-center p-2 rounded-lg bg-slate-800/80 border border-slate-700 text-xs">
-                  {editingId === c.id ? (
-                    <div className="flex items-center gap-1.5 w-full">
-                      <input
-                        type="text"
-                        value={editingName}
-                        onChange={(e) => setEditingName(e.target.value)}
-                        className="flex-1 p-1 bg-slate-700 border border-amber-500 rounded text-xs text-white"
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => handleSaveRename(c.id)}
-                        className="px-2 py-1 bg-emerald-600 rounded text-[10px] font-bold"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => setEditingId(null)}
-                        className="px-2 py-1 bg-slate-700 rounded text-[10px]"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <span className="truncate font-medium flex-1">{c.name}</span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleStartRename(c)}
-                          className="text-amber-400 hover:text-amber-300 text-[10px] px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600"
-                        >
-                          ✏️ Rename
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCouple(c.id, c.name)}
-                          className="text-red-400 hover:text-red-300 text-[10px] px-1.5 py-0.5 rounded bg-red-950/40 border border-red-800/60"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </>
-                  )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-3">
+                <span className="text-xs font-bold text-slate-300 block uppercase tracking-wider">Primary Screen Mode:</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleUpdateProjectorControl({ display_mode: 'live' })}
+                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition ${
+                      projControl.display_mode === 'live' ? 'bg-amber-500 text-black font-extrabold' : 'bg-slate-700 text-slate-300'
+                    }`}
+                  >
+                    🎯 Single Contestant (60s Timer)
+                  </button>
+                  <button
+                    onClick={() => handleUpdateProjectorControl({ display_mode: 'all' })}
+                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition ${
+                      projControl.display_mode === 'all' ? 'bg-amber-500 text-black font-extrabold' : 'bg-slate-700 text-slate-300'
+                    }`}
+                  >
+                    📊 All Contestants Overview
+                  </button>
                 </div>
-              ))}
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-3">
+                <span className="text-xs font-bold text-slate-300 block uppercase tracking-wider">All-Contestant Category Focus:</span>
+                <div className="flex gap-2">
+                  <select
+                    value={projControl.active_criterion}
+                    onChange={(e) => handleUpdateProjectorControl({ active_criterion: e.target.value })}
+                    className="flex-1 p-2.5 bg-slate-700 border border-slate-600 rounded-xl text-xs text-white"
+                  >
+                    <option value="total">Overall Championship Leaderboard</option>
+                    <option value="outfit">Outfit & Presentation (25 pts)</option>
+                    <option value="essence">Kerala Ethnic Essence (20 pts)</option>
+                    <option value="walk">Walk & Stage Presence (20 pts)</option>
+                    <option value="chemistry">Togetherness & Chemistry (20 pts)</option>
+                    <option value="confidence">Confidence & Impact (15 pts)</option>
+                  </select>
+                  <button
+                    onClick={() => handleUpdateProjectorControl({ auto_rotate: !projControl.auto_rotate })}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold font-mono ${
+                      projControl.auto_rotate ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-400'
+                    }`}
+                  >
+                    {projControl.auto_rotate ? 'Auto-Rotate ON' : 'Rotation PAUSED'}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* TAB 3: BRANDING & EVENT SETTINGS */}
+        {activeTab === 'event' && (
+          <form onSubmit={handleSaveProfile} className="bg-slate-900/90 border border-slate-800 p-6 rounded-3xl space-y-4">
+            <h2 className="text-base font-black text-white">⚙️ Global Organisation & Event Profile</h2>
+            <p className="text-xs text-slate-400">Changes here apply across mobile voting screens, screen titles, and broadcast cards</p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Organisation / Host Association Name:</label>
+                <input
+                  type="text"
+                  value={eventProfile.org_name}
+                  onChange={(e) => setEventProfile({ ...eventProfile, org_name: e.target.value })}
+                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white"
+                  placeholder="e.g., Bedford Marston Kerala Association"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Event Competition Title:</label>
+                <input
+                  type="text"
+                  value={eventProfile.event_name}
+                  onChange={(e) => setEventProfile({ ...eventProfile, event_name: e.target.value })}
+                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white"
+                  placeholder="e.g., Kerala Thanima 2026"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Sub-heading / Tagline:</label>
+                <input
+                  type="text"
+                  value={eventProfile.sub_title}
+                  onChange={(e) => setEventProfile({ ...eventProfile, sub_title: e.target.value })}
+                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white"
+                  placeholder="e.g., Live Audience Voting Portal"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Default Voting Window (Seconds):</label>
+                <input
+                  type="number"
+                  value={eventProfile.default_timer_seconds}
+                  onChange={(e) => setEventProfile({ ...eventProfile, default_timer_seconds: parseInt(e.target.value) || 60 })}
+                  className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={savingProfile}
+              className="px-6 py-3 bg-amber-500 hover:bg-amber-400 font-bold text-xs text-slate-950 rounded-xl shadow transition"
+            >
+              {savingProfile ? 'Saving...' : 'Save Global Profile'}
+            </button>
+          </form>
+        )}
+
+        {/* TAB 4: CONTESTANTS */}
+        {activeTab === 'contestants' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl space-y-3">
+              <h3 className="text-sm font-bold">Add Contestant</h3>
+              <form onSubmit={handleAddCouple} className="space-y-2">
+                <input
+                  type="text"
+                  placeholder="e.g. Chest No 26: Rahul & Maya"
+                  value={newCoupleName}
+                  onChange={(e) => setNewCoupleName(e.target.value)}
+                  className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white"
+                />
+                <button type="submit" className="w-full py-2 bg-emerald-600 font-bold rounded-lg text-xs">
+                  Add Contestant
+                </button>
+              </form>
+            </div>
+
+            <div className="lg:col-span-2 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl">
+              <h3 className="text-sm font-bold mb-3">Roster ({couples.length})</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
+                {couples.map((c) => (
+                  <div key={c.id} className="p-2 bg-slate-800 rounded-lg flex justify-between items-center text-xs">
+                    {editingId === c.id ? (
+                      <div className="flex gap-1 w-full">
+                        <input
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          className="flex-1 p-1 bg-slate-700 rounded text-xs"
+                        />
+                        <button onClick={() => handleSaveRename(c.id)} className="px-2 bg-emerald-600 rounded text-[10px]">Save</button>
+                        <button onClick={() => setEditingId(null)} className="px-2 bg-slate-700 rounded text-[10px]">✕</button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="truncate">{c.name}</span>
+                        <div className="flex gap-1">
+                          <button onClick={() => { setEditingId(c.id); setEditingName(c.name); }} className="text-[10px] px-1.5 py-0.5 bg-slate-700 rounded text-amber-300">✏️</button>
+                          <button onClick={() => handleDeleteCouple(c.id, c.name)} className="text-[10px] px-1.5 py-0.5 bg-red-950 text-red-300 rounded">✕</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: ADMIN PASSCODES */}
+        {activeTab === 'admins' && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl space-y-3">
+              <h3 className="text-sm font-bold">Create New Admin User</h3>
+              <form onSubmit={handleAddAdmin} className="space-y-3">
+                <input
+                  type="text"
+                  placeholder="Admin Name (e.g., Coordinator 1)"
+                  value={newAdminName}
+                  onChange={(e) => setNewAdminName(e.target.value)}
+                  className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white"
+                />
+                <input
+                  type="text"
+                  placeholder="Secure Passcode"
+                  value={newAdminPasscode}
+                  onChange={(e) => setNewAdminPasscode(e.target.value)}
+                  className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                />
+                <button type="submit" className="w-full py-2 bg-amber-500 font-bold text-slate-950 rounded-lg text-xs">
+                  Authorize Admin
+                </button>
+              </form>
+            </div>
+
+            <div className="sm:col-span-2 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl">
+              <h3 className="text-sm font-bold mb-3">Authorized Admins</h3>
+              <div className="space-y-2">
+                {adminList.map((adm) => (
+                  <div key={adm.id} className="p-3 bg-slate-800 rounded-xl flex justify-between items-center text-xs">
+                    <div>
+                      <span className="font-bold text-white">{adm.name}</span>
+                      <span className="ml-2 font-mono text-slate-400">Passcode: ••••••••</span>
+                    </div>
+                    {adminList.length > 1 && (
+                      <button onClick={() => handleDeleteAdmin(adm.id, adm.name)} className="text-[10px] px-2 py-1 bg-red-950 text-red-300 rounded border border-red-800">
+                        Revoke Access
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </main>
