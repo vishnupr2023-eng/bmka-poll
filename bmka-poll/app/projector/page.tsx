@@ -23,8 +23,8 @@ interface CriterionConfig {
 const CRITERIA: CriterionConfig[] = [
   {
     key: 'total',
-    title: 'Total Score',
-    titleMl: 'ആകെ സ്കോർ',
+    title: 'Overall Total Score',
+    titleMl: 'ആകെ സ്കോർ ലീഡർബോർഡ്',
     maxScore: 100,
     gradient: 'from-amber-600 via-orange-500 to-amber-300',
     accentColor: 'text-amber-400',
@@ -41,7 +41,7 @@ const CRITERIA: CriterionConfig[] = [
   },
   {
     key: 'essence',
-    title: 'Ethnic Essence',
+    title: 'Kerala Ethnic Essence',
     titleMl: 'കേരളത്തനിമ',
     maxScore: 20,
     gradient: 'from-emerald-600 via-teal-400 to-emerald-200',
@@ -50,8 +50,8 @@ const CRITERIA: CriterionConfig[] = [
   },
   {
     key: 'walk',
-    title: 'Walk & Presence',
-    titleMl: 'നടനം & പ്രൗഢി',
+    title: 'Walk & Stage Presence',
+    titleMl: 'വേദിയിലെ നടനവും പ്രൗഢിയും',
     maxScore: 20,
     gradient: 'from-blue-600 via-cyan-500 to-sky-300',
     accentColor: 'text-cyan-400',
@@ -59,8 +59,8 @@ const CRITERIA: CriterionConfig[] = [
   },
   {
     key: 'chemistry',
-    title: 'Chemistry',
-    titleMl: 'ഒരുമ & പൊരുത്തം',
+    title: 'Togetherness & Chemistry',
+    titleMl: 'ഒരുമയും പൊരുത്തവും',
     maxScore: 20,
     gradient: 'from-purple-600 via-fuchsia-500 to-pink-300',
     accentColor: 'text-fuchsia-400',
@@ -69,7 +69,7 @@ const CRITERIA: CriterionConfig[] = [
   {
     key: 'confidence',
     title: 'Confidence & Impact',
-    titleMl: 'ആത്മവിശ്വാസം',
+    titleMl: 'ആത്മവിശ്വാസവും പ്രകടനവും',
     maxScore: 15,
     gradient: 'from-amber-500 via-yellow-400 to-lime-300',
     accentColor: 'text-yellow-400',
@@ -154,53 +154,88 @@ function ProjectorContent() {
         }
       }
 
-      const { data: allCouples } = await supabase.from('couples').select('*');
-      const { data: allVotes } = await supabase.from('votes').select('*');
+      // Total ballots count across whole event
+      const { count: voteTotalCount } = await supabase
+        .from('votes')
+        .select('*', { count: 'exact', head: true });
 
-      if (allCouples && allVotes) {
-        setTotalBallots(allVotes.length);
-        const calculated = allCouples.map((c) => {
-          const cV = allVotes.filter((v: any) => v.couple_id === c.id);
-          const count = cV.length;
-          const chestNum = extractChestNumber(c.name);
+      if (typeof voteTotalCount === 'number') {
+        setTotalBallots(voteTotalCount);
+      }
 
-          if (count === 0) {
+      // Query database view: handles unlimited vote counts without 1000-row cutoff
+      const { data: scoresViewData, error: viewError } = await supabase
+        .from('contestant_scores_view')
+        .select('*');
+
+      if (!viewError && scoresViewData && scoresViewData.length > 0) {
+        const calculated = scoresViewData.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          chestNumber: extractChestNumber(c.name),
+          count: Number(c.vote_count || 0),
+          total: Number(c.avg_total || 0),
+          outfit: Number(c.avg_outfit || 0),
+          essence: Number(c.avg_essence || 0),
+          walk: Number(c.avg_walk || 0),
+          chemistry: Number(c.avg_chemistry || 0),
+          confidence: Number(c.avg_confidence || 0)
+        }));
+
+        calculated.sort((a, b) => a.chestNumber - b.chestNumber);
+        setAllCouplesData(calculated);
+      } else {
+        // Fallback in case the view is not yet created
+        const { data: couplesFallback } = await supabase.from('couples').select('*');
+        const { data: votesFallback } = await supabase.from('votes').select('*').limit(10000);
+
+        if (couplesFallback && votesFallback) {
+          const calculated = couplesFallback.map((c) => {
+            const cV = votesFallback.filter(
+              (v: any) => String(v.couple_id || '').trim() === String(c.id || '').trim()
+            );
+            const count = cV.length;
+            const chestNum = extractChestNumber(c.name);
+
+            if (count === 0) {
+              return {
+                id: c.id,
+                name: c.name,
+                chestNumber: chestNum,
+                count: 0,
+                outfit: 0,
+                essence: 0,
+                walk: 0,
+                chemistry: 0,
+                confidence: 0,
+                total: 0
+              };
+            }
+
+            const sumTotal = cV.reduce((a: number, b: any) => a + Number(b.total || 0), 0);
+            const sumOutfit = cV.reduce((a: number, b: any) => a + Number(b.outfit || 0), 0);
+            const sumEssence = cV.reduce((a: number, b: any) => a + Number(b.essence || 0), 0);
+            const sumWalk = cV.reduce((a: number, b: any) => a + Number(b.walk || 0), 0);
+            const sumChem = cV.reduce((a: number, b: any) => a + Number(b.chemistry || 0), 0);
+            const sumConf = cV.reduce((a: number, b: any) => a + Number(b.confidence || 0), 0);
+
             return {
               id: c.id,
               name: c.name,
               chestNumber: chestNum,
-              count: 0,
-              outfit: 0,
-              essence: 0,
-              walk: 0,
-              chemistry: 0,
-              confidence: 0,
-              total: 0
+              count,
+              total: parseFloat((sumTotal / count).toFixed(1)),
+              outfit: parseFloat((sumOutfit / count).toFixed(1)),
+              essence: parseFloat((sumEssence / count).toFixed(1)),
+              walk: parseFloat((sumWalk / count).toFixed(1)),
+              chemistry: parseFloat((sumChem / count).toFixed(1)),
+              confidence: parseFloat((sumConf / count).toFixed(1))
             };
-          }
+          });
 
-          const sumTotal = cV.reduce((a: number, b: any) => a + b.total, 0);
-          const sumOutfit = cV.reduce((a: number, b: any) => a + b.outfit, 0);
-          const sumEssence = cV.reduce((a: number, b: any) => a + b.essence, 0);
-          const sumWalk = cV.reduce((a: number, b: any) => a + b.walk, 0);
-          const sumChem = cV.reduce((a: number, b: any) => a + b.chemistry, 0);
-          const sumConf = cV.reduce((a: number, b: any) => a + b.confidence, 0);
-
-          return {
-            id: c.id,
-            name: c.name,
-            chestNumber: chestNum,
-            count,
-            total: parseFloat((sumTotal / count).toFixed(1)),
-            outfit: parseFloat((sumOutfit / count).toFixed(1)),
-            essence: parseFloat((sumEssence / count).toFixed(1)),
-            walk: parseFloat((sumWalk / count).toFixed(1)),
-            chemistry: parseFloat((sumChem / count).toFixed(1)),
-            confidence: parseFloat((sumConf / count).toFixed(1))
-          };
-        });
-
-        setAllCouplesData(calculated);
+          calculated.sort((a, b) => a.chestNumber - b.chestNumber);
+          setAllCouplesData(calculated);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -236,7 +271,7 @@ function ProjectorContent() {
             key: 'live_contestant_session',
             value: { ...session, status: 'completed' }
           }
-        ]).then(() => {});
+        ], { onConflict: 'key' }).then(() => {});
       }
     }, 250);
 
@@ -280,22 +315,22 @@ function ProjectorContent() {
 
   const activeCriterion = CRITERIA[currentSlideIndex];
 
-  const sortedAllData = [...allCouplesData].sort((a, b) => {
-    const diff = (b[activeCriterion.key] as number) - (a[activeCriterion.key] as number);
-    if (diff !== 0) return diff;
-    return a.chestNumber - b.chestNumber;
-  });
-
+  // Top 3 champions for Winner Announcement overlay
   const championshipLeaderboard = [...allCouplesData].sort((a, b) => {
     const diff = b.total - a.total;
     if (diff !== 0) return diff;
     return a.chestNumber - b.chestNumber;
   });
 
+  // Calculate live criterion rank for display badge
+  const rankedByActiveCriterion = [...allCouplesData].sort((a, b) => {
+    return (b[activeCriterion.key] as number) - (a[activeCriterion.key] as number);
+  });
+
   const voteCount = coupleVotes.length;
   const getSingleAvg = (key: string) => {
     if (voteCount === 0) return 0;
-    const sum = coupleVotes.reduce((acc, curr) => acc + (curr[key] || 0), 0);
+    const sum = coupleVotes.reduce((acc, curr) => acc + Number(curr[key] || 0), 0);
     return parseFloat((sum / voteCount).toFixed(1));
   };
 
@@ -305,9 +340,9 @@ function ProjectorContent() {
   return (
     <main className="h-screen w-screen bg-[#03060f] text-white flex flex-col justify-between overflow-hidden select-none p-3 lg:p-5 font-sans relative">
       
-      {/* ================= WINNER OVERLAY ================= */}
+      {/* ================= WINNER ANNOUNCEMENT OVERLAY ================= */}
       {winnerActive && championshipLeaderboard.length > 0 && (
-        <div className="absolute inset-0 z-50 bg-[#02050e]/95 backdrop-blur-xl flex flex-col justify-between p-6 text-center">
+        <div className="absolute inset-0 z-50 bg-[#02050e]/95 backdrop-blur-xl flex flex-col justify-between p-6 text-center animate-fadeIn">
           <div className="relative z-10 pt-2">
             <span className="text-xs uppercase tracking-widest font-mono text-amber-400 bg-amber-500/10 px-4 py-1.5 rounded-full border border-amber-500/30">
               BMKA Kerala Thanima 2026 • Official Championship Result
@@ -377,7 +412,7 @@ function ProjectorContent() {
           </span>
         </div>
 
-        {/* Center Title in Header */}
+        {/* Center Title */}
         <div className="text-center">
           {displayMode === 'live' ? (
             <div>
@@ -471,7 +506,7 @@ function ProjectorContent() {
             </div>
           </div>
 
-          {/* Right 3/4: Current Contestant Scores Arena (Strict 6-column grid with equal gaps) */}
+          {/* Right 3/4: Current Contestant Scores Arena */}
           <div className="flex-1 bg-slate-900/40 rounded-2xl border border-slate-800/80 p-4 flex flex-col justify-between shadow-2xl relative min-h-0 overflow-hidden">
             <div className="flex justify-between items-center border-b border-slate-800/80 pb-2 flex-none">
               <div>
@@ -484,7 +519,7 @@ function ProjectorContent() {
               </div>
             </div>
 
-            {/* Strict 6-Column Grid Layout with IDENTICAL Gaps and Proportional Heights */}
+            {/* Strict 6-Column Equal Grid */}
             <div className="flex-1 grid grid-cols-6 gap-3 sm:gap-4 lg:gap-6 items-end pt-3 pb-1 px-2 min-h-0">
               {CRITERIA.map((criterion) => {
                 const currentScore = getSingleAvg(criterion.key);
@@ -492,8 +527,6 @@ function ProjectorContent() {
 
                 return (
                   <div key={criterion.key} className="flex flex-col items-center h-full justify-end min-h-0">
-                    
-                    {/* Score Tag */}
                     <div className="mb-1 text-center flex-none">
                       <div className={`font-mono font-black text-base lg:text-xl leading-none ${criterion.accentColor}`}>
                         {currentScore}
@@ -503,7 +536,6 @@ function ProjectorContent() {
                       </span>
                     </div>
 
-                    {/* Bar Pillar */}
                     <div className="w-full max-w-[56px] bg-slate-900/90 rounded-xl p-0.5 flex flex-col justify-end flex-1 min-h-0 border border-slate-700/60 shadow-inner">
                       <div
                         className={`w-full rounded-lg transition-all duration-700 bg-gradient-to-t ${criterion.gradient} shadow-lg`}
@@ -511,7 +543,6 @@ function ProjectorContent() {
                       />
                     </div>
 
-                    {/* Bottom Labels (Strictly contained, no overflow) */}
                     <div className="mt-1.5 text-center w-full flex-none">
                       <div className="text-[10px] sm:text-xs font-black text-amber-300 truncate w-full" title={criterion.titleMl}>
                         {criterion.titleMl}
@@ -529,15 +560,15 @@ function ProjectorContent() {
         </div>
       )}
 
-      {/* ================= VIEW 2: ALL CONTESTANTS (FULL ARENA) ================= */}
+      {/* ================= VIEW 2: ALL CONTESTANTS (100% ACCURATE VIEW DATA) ================= */}
       {displayMode === 'all' && (
-        <section className={`flex-1 flex flex-col justify-center my-2.5 transition-all duration-300 min-h-0 overflow-hidden ${
+        <section className={`flex-1 flex flex-col justify-center my-2 transition-all duration-300 min-h-0 overflow-hidden ${
           isTransitioning ? 'opacity-0 scale-98' : 'opacity-100 scale-100'
         }`}>
-          <div className="relative w-full h-full bg-slate-900/40 rounded-2xl border border-slate-800/80 px-4 py-3 flex flex-col justify-end shadow-2xl min-h-0">
+          <div className="relative w-full h-full bg-slate-900/40 rounded-2xl border border-slate-800/80 px-2 py-2 flex flex-col justify-end shadow-2xl min-h-0">
             
-            {/* Background Score Guideline Marks */}
-            <div className="absolute inset-0 px-6 py-4 flex flex-col justify-between pointer-events-none opacity-15">
+            {/* Background Guideline Marks */}
+            <div className="absolute inset-0 px-4 py-3 flex flex-col justify-between pointer-events-none opacity-15">
               <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[9px] text-slate-300 font-mono font-bold">{activeCriterion.maxScore} pts</div>
               <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[9px] text-slate-300 font-mono font-bold">{(activeCriterion.maxScore * 0.75).toFixed(0)} pts</div>
               <div className="border-b border-dashed border-slate-400 w-full flex justify-end text-[9px] text-slate-300 font-mono font-bold">{(activeCriterion.maxScore * 0.5).toFixed(0)} pts</div>
@@ -545,45 +576,57 @@ function ProjectorContent() {
               <div className="border-b border-slate-600 w-full"></div>
             </div>
 
-            {/* Dynamic Unified Bar Arena for ALL Contestants (No Roster) */}
-            <div className="relative z-10 flex justify-between items-end gap-1 sm:gap-2 h-full pt-6 min-h-0">
-              {sortedAllData.map((c, index) => {
-                const score = c[activeCriterion.key] as number;
+            {/* Mathematically Scaled Grid: Fully renders all 25 contestants without omitting 22 or 23 */}
+            <div
+              className="relative z-10 w-full h-full pt-4 min-h-0 items-end"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${allCouplesData.length || 25}, minmax(0, 1fr))`,
+                columnGap: '3px'
+              }}
+            >
+              {allCouplesData.map((c) => {
+                const score = (c[activeCriterion.key] as number) || 0;
                 const heightPercent = Math.max((score / activeCriterion.maxScore) * 100, 4);
 
+                const rankIdx = rankedByActiveCriterion.findIndex((item) => item.id === c.id);
+                const isLeader = rankIdx === 0 && score > 0;
+
                 return (
-                  <div key={c.id} className="flex-1 flex flex-col items-center h-full justify-end group min-w-0 min-h-0">
+                  <div key={c.id} className="flex flex-col items-center h-full justify-end min-h-0 w-full">
                     
-                    {/* Floating Header */}
+                    {/* Score & Rank Tag */}
                     <div className="relative flex flex-col items-center mb-1 h-9 justify-end w-full flex-none">
-                      {index === 0 && (
-                        <span className="absolute -top-4 text-sm animate-bounce drop-shadow-[0_2px_8px_rgba(245,158,11,0.6)]">
+                      {isLeader && (
+                        <span className="absolute -top-3.5 text-xs animate-bounce drop-shadow-[0_2px_6px_rgba(245,158,11,0.6)]">
                           👑
                         </span>
                       )}
-                      <span className={`font-mono font-black text-xs sm:text-sm leading-none ${activeCriterion.accentColor}`}>
+                      <span className={`font-mono font-black text-[11px] lg:text-xs leading-none ${activeCriterion.accentColor}`}>
                         {score}
                       </span>
-                      <span className="text-[8px] font-mono font-bold px-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 mt-0.5">
-                        #{index + 1}
-                      </span>
+                      {score > 0 && (
+                        <span className="text-[7px] font-mono font-bold px-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 mt-0.5">
+                          #{rankIdx + 1}
+                        </span>
+                      )}
                     </div>
                     
-                    {/* Vertical Bar */}
-                    <div className="w-full max-w-[38px] bg-slate-900/90 rounded-lg p-0.5 flex flex-col justify-end flex-1 min-h-0 border border-slate-800/80 shadow-inner">
+                    {/* Vertical Pillar */}
+                    <div className="w-full bg-slate-900/90 rounded-md p-0.5 flex flex-col justify-end flex-1 min-h-0 border border-slate-800/80 shadow-inner">
                       <div
-                        className={`w-full rounded-md transition-all duration-1000 bg-gradient-to-t ${activeCriterion.gradient}`}
+                        className={`w-full rounded-sm transition-all duration-700 bg-gradient-to-t ${activeCriterion.gradient}`}
                         style={{ height: `${heightPercent}%` }}
                       />
                     </div>
 
-                    {/* Contestant Name Label */}
-                    <div className="mt-1.5 text-center w-full flex-none">
-                      <div className="text-[9px] sm:text-[10px] font-bold text-slate-200 truncate w-full" title={c.name}>
-                        {c.name.replace(/Chest No\s*/i, '#')}
+                    {/* Bottom Label */}
+                    <div className="mt-1 text-center w-full flex-none">
+                      <div className="text-[8px] sm:text-[9px] font-black text-slate-200 truncate w-full" title={c.name}>
+                        #{c.chestNumber}
                       </div>
-                      <div className="text-[7px] font-mono text-slate-400 mt-0.5 hidden sm:block">
-                        Tot: {c.total}
+                      <div className="text-[7px] font-mono text-slate-400 mt-0.5 hidden lg:block">
+                        {c.total}p
                       </div>
                     </div>
                   </div>
